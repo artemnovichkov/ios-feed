@@ -6,6 +6,27 @@ func escapeHTML(_ text: String) -> String {
         .replacingOccurrences(of: ">", with: "&gt;")
 }
 
+func appendUTMParameters(to urlString: String) -> String {
+    guard var components = URLComponents(string: urlString) else { return urlString }
+    
+    var queryItems = components.queryItems ?? []
+    let utmItems = [
+        URLQueryItem(name: "utm_source", value: "telegram"),
+        URLQueryItem(name: "utm_medium", value: "channel"),
+        URLQueryItem(name: "utm_campaign", value: "ios_daily")
+    ]
+    
+    // Avoid duplicates if they already exist
+    for item in utmItems {
+        if !queryItems.contains(where: { $0.name == item.name }) {
+            queryItems.append(item)
+        }
+    }
+    
+    components.queryItems = queryItems
+    return components.url?.absoluteString ?? urlString
+}
+
 do {
     // First validate config
     Config.validate()
@@ -36,11 +57,14 @@ do {
          exit(0)
     }
     
+    // Add UTM parameters to the URL
+    let trackedURL = appendUTMParameters(to: result.url)
+    
     // Format the post with a hyperlinked title
     var lines = result.post.components(separatedBy: .newlines)
     if !lines.isEmpty {
         let title = lines[0]
-        lines[0] = "<a href=\"\(result.url)\"><b>\(escapeHTML(title))</b></a>"
+        lines[0] = "<a href=\"\(trackedURL)\"><b>\(escapeHTML(title))</b></a>"
     }
     
     // Escape the rest of the post (except our already formatted title)

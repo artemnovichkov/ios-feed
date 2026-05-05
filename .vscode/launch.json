@@ -19,6 +19,26 @@
             "target": "iOSFeedBot",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release iOSFeedBot (.worktrees/ios-feed-bot)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ios-feed}",
+            "name": "Debug iOSFeedBot",
+            "target": "iOSFeedBot",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug iOSFeedBot"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ios-feed}",
+            "name": "Release iOSFeedBot",
+            "target": "iOSFeedBot",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release iOSFeedBot"
         }
     ]
 }
