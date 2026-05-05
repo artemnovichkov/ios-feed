@@ -5,11 +5,17 @@ class DirectoryService {
         guard let url = URL(string: Config.directoryUrl) else { return [] }
         let (data, _) = try await URLSession.shared.data(from: url)
         
-        // The blogs.json structure is an array of categories, each having a 'blogs' array
-        struct Category: Codable {
-            let blogs: [Blog]
+        struct Language: Codable {
+            let categories: [Category]
         }
-        let categories = try JSONDecoder().decode([Category].self, from: data)
-        return categories.flatMap { $0.blogs }
+        
+        struct Category: Codable {
+            let sites: [Blog]
+        }
+        
+        let languages = try JSONDecoder().decode([Language].self, from: data)
+        return languages
+            .flatMap { $0.categories }
+            .flatMap { $0.sites }
     }
 }
