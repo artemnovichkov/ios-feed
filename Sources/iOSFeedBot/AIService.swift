@@ -9,8 +9,8 @@ enum AIError: Error {
 }
 
 class AIService {
-    func generatePost(articles: [Article]) async throws -> String {
-        guard !articles.isEmpty else { return "" }
+    func generatePost(articles: [Article]) async throws -> (url: String, post: String) {
+        guard !articles.isEmpty else { return ("", "") }
         
         let articleList = articles.map { article in
             var text = "- \(article.title) (\(article.url))"
@@ -25,8 +25,11 @@ class AIService {
         \(articleList)
         
         Please select the single most interesting and technically valuable article.
-        Generate a Telegram post for it in the following format:
+        Generate a Telegram post for it.
         
+        Your response MUST follow this exact format:
+        URL: [The full URL of the selected article]
+        POST:
         [Title of the Article]
         
         [A short summary (2-3 sentences) explaining why it is interesting for iOS developers]
@@ -34,7 +37,8 @@ class AIService {
         #[Hashtag1] #[Hashtag2] #[SourceDomain]
         
         Instructions:
-        - Return ONLY the post text without any markdown code blocks or additional chatter.
+        - Return ONLY the URL and the post text as specified above.
+        - Do not use markdown code blocks or additional chatter.
         - Ensure hashtags are valid (alphanumeric, no dots/spaces/special characters).
         - Sanitize the SourceDomain hashtag (e.g., "iosdev.com" -> "#iosdev").
         """
@@ -63,7 +67,18 @@ class AIService {
         guard let content = response.choices.first?.message.content else {
             throw AIError.emptyResponse
         }
-        return content
+        
+        // Parse the URL and POST content
+        let lines = content.components(separatedBy: .newlines)
+        guard let urlLine = lines.first(where: { $0.hasPrefix("URL:") }),
+              let postIndex = lines.firstIndex(where: { $0.hasPrefix("POST:") }) else {
+            throw AIError.emptyResponse
+        }
+        
+        let url = urlLine.replacingOccurrences(of: "URL:", with: "").trimmingCharacters(in: .whitespaces)
+        let post = lines[(postIndex + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return (url, post)
     }
 }
 

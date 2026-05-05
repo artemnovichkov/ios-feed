@@ -9,20 +9,25 @@ enum TelegramError: Error {
 
 class TelegramService {
     func sendMessage(_ text: String) async throws {
-        guard !text.isEmpty else { return }
-        let urlString = "https://api.telegram.org/bot\(Config.telegramBotToken)/sendMessage"
-        guard let url = URL(string: urlString) else { return }
-        
-        let escapedText = text
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-
-        let payload: [String: Any] = [
+        try await performAction(method: "sendMessage", payload: [
             "chat_id": Config.telegramChannelId,
-            "text": escapedText,
+            "text": text,
             "parse_mode": "HTML"
-        ]
+        ])
+    }
+
+    func sendPhoto(url: String, caption: String) async throws {
+        try await performAction(method: "sendPhoto", payload: [
+            "chat_id": Config.telegramChannelId,
+            "photo": url,
+            "caption": caption,
+            "parse_mode": "HTML"
+        ])
+    }
+
+    private func performAction(method: String, payload: [String: Any]) async throws {
+        let urlString = "https://api.telegram.org/bot\(Config.telegramBotToken)/\(method)"
+        guard let url = URL(string: urlString) else { return }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
