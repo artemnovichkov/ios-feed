@@ -1,9 +1,18 @@
 import Foundation
 
 class DirectoryService {
+    enum DirectoryError: Error {
+        case invalidResponse
+    }
+
     func fetchBlogs() async throws -> [Blog] {
         guard let url = URL(string: Config.directoryUrl) else { return [] }
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw DirectoryError.invalidResponse
+        }
         
         struct Language: Codable {
             let categories: [Category]
