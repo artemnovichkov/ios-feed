@@ -14,7 +14,7 @@ struct Article {
 }
 
 struct OpenAIRequest: Codable {
-    let model: String = "gpt-4o-mini"
+    var model: String = Config.openaiModel
     let messages: [Message]
     
     struct Message: Codable {
