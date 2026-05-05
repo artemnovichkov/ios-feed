@@ -1,10 +1,22 @@
 import Foundation
 
+enum AIError: Error {
+    case invalidResponse(Int)
+    case emptyResponse
+}
+
 class AIService {
     func generatePost(articles: [Article]) async throws -> String {
         guard !articles.isEmpty else { return "" }
         
-        let articleList = articles.map { "- \($0.title) (\($0.url))" }.joined(separator: "\n")
+        let articleList = articles.map { article in
+            var text = "- \(article.title) (\(article.url))"
+            if let description = article.description, !description.isEmpty {
+                text += "\n  Description: \(description)"
+            }
+            return text
+        }.joined(separator: "\n")
+        
         let prompt = """
         I have a list of iOS development articles published in the last 24 hours:
         \(articleList)
@@ -18,7 +30,10 @@ class AIService {
         
         #[Hashtag1] #[Hashtag2] #[SourceDomain]
         
-        Return ONLY the post text.
+        Instructions:
+        - Return ONLY the post text without any markdown code blocks or additional chatter.
+        - Ensure hashtags are valid (alphanumeric, no dots/spaces/special characters).
+        - Sanitize the SourceDomain hashtag (e.g., "iosdev.com" -> "#iosdev").
         """
         
         let requestBody = OpenAIRequest(messages: [.init(role: "user", content: prompt)])
@@ -30,9 +45,21 @@ class AIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         
-        let (responseData, _) = try await URLSession.shared.data(for: request)
+        let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = urlResponse as? HTTPURLResponse else {
+            throw AIError.invalidResponse(0)
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw AIError.invalidResponse(httpResponse.statusCode)
+        }
+        
         let response = try JSONDecoder().decode(OpenAIResponse.self, from: responseData)
-        return response.choices.first?.message.content ?? ""
+        guard let content = response.choices.first?.message.content else {
+            throw AIError.emptyResponse
+        }
+        return content
     }
 }
 
