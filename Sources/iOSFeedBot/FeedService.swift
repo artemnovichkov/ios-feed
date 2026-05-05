@@ -1,5 +1,8 @@
 import Foundation
 import FeedKit
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 class FeedService {
     func fetchArticles(from blog: Blog) async -> [Article] {

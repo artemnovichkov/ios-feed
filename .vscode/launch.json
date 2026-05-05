@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ios-feed}/.worktrees/ios-feed-bot",
+            "name": "Debug iOSFeedBot (.worktrees/ios-feed-bot)",
+            "target": "iOSFeedBot",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug iOSFeedBot (.worktrees/ios-feed-bot)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ios-feed}/.worktrees/ios-feed-bot",
+            "name": "Release iOSFeedBot (.worktrees/ios-feed-bot)",
+            "target": "iOSFeedBot",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release iOSFeedBot (.worktrees/ios-feed-bot)"
+        }
+    ]
+}
