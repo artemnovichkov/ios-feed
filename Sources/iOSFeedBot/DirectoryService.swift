@@ -17,5 +17,6 @@ class DirectoryService {
         return languages
             .flatMap { $0.categories }
             .flatMap { $0.sites }
+            .filter { $0.feedUrl != nil }
     }
 }

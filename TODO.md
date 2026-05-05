@@ -2,7 +2,7 @@
 
 - [x] Task 1: Project Initialization
 - [x] Task 2: Data Models & Environment Config
-- [ ] Task 3: Fetching Blog Directory
+- [x] Task 3: Fetching Blog Directory
 - [ ] Task 4: RSS Feed Parsing
 - [ ] Task 5: AI Selection & Post Generation
 - [ ] Task 6: Telegram Posting

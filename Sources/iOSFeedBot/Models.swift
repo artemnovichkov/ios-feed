@@ -3,7 +3,7 @@ import Foundation
 struct Blog: Codable {
     let title: String
     let siteUrl: String
-    let feedUrl: String
+    let feedUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case title
