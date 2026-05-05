@@ -7,6 +7,7 @@ class FeedService {
         
         var request = URLRequest(url: url)
         request.timeoutInterval = 15.0
+        request.setValue("iOSFeedBot/1.0", forHTTPHeaderField: "User-Agent")
         
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
@@ -21,13 +22,13 @@ class FeedService {
                         case .rss(let rssFeed):
                             articles = rssFeed.items?.compactMap { item in
                                 guard let pubDate = item.pubDate else { return nil }
-                                return Article(title: item.title ?? "", url: item.link ?? "", description: item.description, pubDate: pubDate)
+                                return Article(title: item.title ?? "", url: item.link ?? "", description: self.stripHTML(item.description), pubDate: pubDate)
                             } ?? []
                         case .atom(let atomFeed):
                             articles = atomFeed.entries?.compactMap { entry in
                                 guard let pubDate = entry.published ?? entry.updated else { return nil }
                                 let link = entry.links?.first(where: { $0.attributes?.rel == "alternate" })?.attributes?.href ?? entry.links?.first?.attributes?.href ?? ""
-                                return Article(title: entry.title ?? "", url: link, description: entry.summary?.value, pubDate: pubDate)
+                                return Article(title: entry.title ?? "", url: link, description: self.stripHTML(entry.summary?.value), pubDate: pubDate)
                             } ?? []
                         default: break
                         }
@@ -41,6 +42,12 @@ class FeedService {
             print("Failed to fetch feed from \(feedUrlString): \(error)")
             return []
         }
+    }
+
+    private func stripHTML(_ string: String?) -> String? {
+        guard let string = string else { return nil }
+        return string.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     func fetchAllRecent(blogs: [Blog]) async -> [Article] {

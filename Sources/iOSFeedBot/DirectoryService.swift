@@ -7,7 +7,10 @@ class DirectoryService {
 
     func fetchBlogs() async throws -> [Blog] {
         guard let url = URL(string: Config.directoryUrl) else { return [] }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.setValue("iOSFeedBot/1.0", forHTTPHeaderField: "User-Agent")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {

@@ -43,6 +43,7 @@ class AIService {
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.openaiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("iOSFeedBot/1.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = data
         
         let (responseData, urlResponse) = try await URLSession.shared.data(for: request)

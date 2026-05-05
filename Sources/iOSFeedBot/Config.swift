@@ -15,7 +15,9 @@ enum Config {
         ].filter { $0.1.isEmpty }.map { $0.0 }
 
         if !missingConfigs.isEmpty {
-            fatalError("Missing configuration environment variables: \(missingConfigs.joined(separator: ", "))")
+            let message = "Error: Missing configuration environment variables: \(missingConfigs.joined(separator: ", "))"
+            fputs("\(message)\n", stderr)
+            exit(1)
         }
     }
 }
