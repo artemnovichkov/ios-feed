@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class DirectoryService {
+final class DirectoryService: Sendable {
     enum DirectoryError: Error {
         case invalidResponse
     }

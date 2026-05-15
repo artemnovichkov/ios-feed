@@ -30,4 +30,5 @@ jobs:
           git pull --ff-only origin main
           swift test
           swift build -c release
+          systemctl restart ios-feed-dashboard.service || true
           EOF

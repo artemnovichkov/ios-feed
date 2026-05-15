@@ -1,4 +1,5 @@
 import Foundation
+import iOSFeedMetrics
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -10,7 +11,11 @@ enum AIError: Error {
     case invalidStructuredOutput
 }
 
-class AIService {
+final class AIService: @unchecked Sendable {
+    private let metricsStore: SQLiteMetricsStore?
+    private let runID: Int64?
+    private let pricing: OpenAIPricing
+
     private static let maxArticleContentCharacters = 12_000
     private static let selectionSchema = JSONValue.object([
         "type": .string("object"),
@@ -42,12 +47,23 @@ class AIService {
         "additionalProperties": .bool(false)
     ])
 
+    init(
+        metricsStore: SQLiteMetricsStore? = nil,
+        runID: Int64? = nil,
+        pricing: OpenAIPricing = OpenAIPricing(inputPricePerMillionTokens: 0, outputPricePerMillionTokens: 0)
+    ) {
+        self.metricsStore = metricsStore
+        self.runID = runID
+        self.pricing = pricing
+    }
+
     func selectArticle(from articles: [Article]) async throws -> Article {
         guard !articles.isEmpty else { throw AIError.emptyResponse }
 
         let prompt = Self.buildSelectionPrompt(articles: articles)
         let selection: ArticleSelection = try await sendPrompt(
             prompt,
+            operation: "article_selection",
             responseFormat: ResponseFormat(name: "article_selection", schema: Self.selectionSchema)
         )
 
@@ -62,6 +78,7 @@ class AIService {
         let prompt = Self.buildPostPrompt(article: article, content: content)
         let response: GeneratedPost = try await sendPrompt(
             prompt,
+            operation: "post_generation",
             responseFormat: ResponseFormat(name: "telegram_post", schema: Self.postSchema)
         )
         return Self.formatPost(response)
@@ -139,8 +156,10 @@ class AIService {
 
     private func sendPrompt<Output: Decodable>(
         _ prompt: String,
+        operation: String,
         responseFormat: ResponseFormat
     ) async throws -> Output {
+        let startedAt = Date()
         let requestBody = OpenAIRequest(
             messages: [.init(role: "user", content: prompt)],
             responseFormat: responseFormat
@@ -154,30 +173,65 @@ class AIService {
         request.setValue("iOSFeedBot/1.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = data
         
-        let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = urlResponse as? HTTPURLResponse else {
-            throw AIError.invalidResponse(0)
-        }
-        
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw AIError.invalidResponse(httpResponse.statusCode)
-        }
-        
-        let response = try JSONDecoder().decode(OpenAIResponse.self, from: responseData)
-        guard let content = response.choices.first?.message.content else {
-            throw AIError.emptyResponse
-        }
-
-        guard let outputData = content.data(using: .utf8) else {
-            throw AIError.invalidStructuredOutput
-        }
-
         do {
-            return try JSONDecoder().decode(Output.self, from: outputData)
+            let (responseData, urlResponse) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = urlResponse as? HTTPURLResponse else {
+                throw AIError.invalidResponse(0)
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw AIError.invalidResponse(httpResponse.statusCode)
+            }
+            
+            let response = try JSONDecoder().decode(OpenAIResponse.self, from: responseData)
+            guard let content = response.choices.first?.message.content else {
+                throw AIError.emptyResponse
+            }
+
+            guard let outputData = content.data(using: .utf8) else {
+                throw AIError.invalidStructuredOutput
+            }
+
+            let output = try JSONDecoder().decode(Output.self, from: outputData)
+            recordAICall(
+                operation: operation,
+                usage: response.usage ?? OpenAIUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0),
+                durationMilliseconds: startedAt.elapsedMilliseconds,
+                status: "success",
+                errorMessage: nil
+            )
+            return output
         } catch {
-            throw AIError.invalidStructuredOutput
+            recordAICall(
+                operation: operation,
+                usage: OpenAIUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0),
+                durationMilliseconds: startedAt.elapsedMilliseconds,
+                status: "failure",
+                errorMessage: String(describing: error)
+            )
+            throw error
         }
+    }
+
+    private func recordAICall(
+        operation: String,
+        usage: OpenAIUsage,
+        durationMilliseconds: Int,
+        status: String,
+        errorMessage: String?
+    ) {
+        guard let metricsStore, let runID else { return }
+        try? metricsStore.recordAICall(
+            runID: runID,
+            operation: operation,
+            model: Config.openaiModel,
+            usage: usage,
+            durationMilliseconds: durationMilliseconds,
+            status: status,
+            estimatedCostUSD: pricing.estimateCost(usage: usage),
+            errorMessage: errorMessage
+        )
     }
 }
 
@@ -199,4 +253,38 @@ struct OpenAIResponse: Codable {
         let message: Message
     }
     let choices: [Choice]
+    let usage: OpenAIUsage?
+
+    enum CodingKeys: String, CodingKey {
+        case choices
+        case usage
+    }
+
+    enum UsageCodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        choices = try container.decode([Choice].self, forKey: .choices)
+
+        if container.contains(.usage) {
+            let usageContainer = try container.nestedContainer(keyedBy: UsageCodingKeys.self, forKey: .usage)
+            usage = OpenAIUsage(
+                promptTokens: try usageContainer.decode(Int.self, forKey: .promptTokens),
+                completionTokens: try usageContainer.decode(Int.self, forKey: .completionTokens),
+                totalTokens: try usageContainer.decode(Int.self, forKey: .totalTokens)
+            )
+        } else {
+            usage = nil
+        }
+    }
+}
+
+private extension Date {
+    var elapsedMilliseconds: Int {
+        Int(Date().timeIntervalSince(self) * 1000)
+    }
 }

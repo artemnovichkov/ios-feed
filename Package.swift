@@ -8,15 +8,31 @@ let package = Package(
         .package(url: "https://github.com/nmdias/FeedKit.git", from: "9.1.2")
     ],
     targets: [
+        .target(
+            name: "iOSFeedMetrics",
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
+        ),
         .executableTarget(
             name: "iOSFeedBot",
             dependencies: [
+                "iOSFeedMetrics",
                 .product(name: "FeedKit", package: "FeedKit")
+            ]
+        ),
+        .executableTarget(
+            name: "iOSFeedDashboard",
+            dependencies: [
+                "iOSFeedMetrics"
             ]
         ),
         .testTarget(
             name: "iOSFeedBotTests",
-            dependencies: ["iOSFeedBot"]
+            dependencies: [
+                "iOSFeedBot",
+                "iOSFeedMetrics"
+            ]
         )
     ],
     swiftLanguageModes: [.v6]

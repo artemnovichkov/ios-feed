@@ -6,6 +6,9 @@ enum Config {
     static let telegramBotToken = ProcessInfo.processInfo.environment["TELEGRAM_BOT_TOKEN"] ?? ""
     static let telegramChannelId = ProcessInfo.processInfo.environment["TELEGRAM_CHANNEL_ID"] ?? ""
     static let directoryUrl = "https://raw.githubusercontent.com/daveverwer/iOSDevDirectory/main/blogs.json"
+    static let metricsDatabasePath = ProcessInfo.processInfo.environment["METRICS_DB_PATH"] ?? ".build/metrics.sqlite"
+    static let openAIInputPricePerMillionTokens = Double(ProcessInfo.processInfo.environment["OPENAI_INPUT_PRICE_PER_1M_TOKENS"] ?? "") ?? 0
+    static let openAIOutputPricePerMillionTokens = Double(ProcessInfo.processInfo.environment["OPENAI_OUTPUT_PRICE_PER_1M_TOKENS"] ?? "") ?? 0
 
     static func validate() {
         let missingConfigs = [

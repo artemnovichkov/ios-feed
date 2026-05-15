@@ -12,6 +12,13 @@ A Swift CLI tool that fetches the latest iOS development articles, uses OpenAI t
 - `OPENAI_API_KEY`: Your OpenAI API Key.
 - `TELEGRAM_BOT_TOKEN`: Your Telegram Bot Token.
 - `TELEGRAM_CHANNEL_ID`: Your Telegram Channel ID.
+- `METRICS_DB_PATH`: SQLite metrics database path. Defaults to `.build/metrics.sqlite`.
+- `OPENAI_INPUT_PRICE_PER_1M_TOKENS`: Input token price used for dashboard cost estimates.
+- `OPENAI_OUTPUT_PRICE_PER_1M_TOKENS`: Output token price used for dashboard cost estimates.
+- `DASHBOARD_USERNAME`: Basic auth username for the metrics dashboard.
+- `DASHBOARD_PASSWORD`: Basic auth password for the metrics dashboard.
+- `DASHBOARD_HOST`: Dashboard bind host. Defaults to `0.0.0.0`.
+- `DASHBOARD_PORT`: Dashboard port. Defaults to `8080`.
 
 ## Build
 ```bash
@@ -24,6 +31,42 @@ export OPENAI_API_KEY=your_key
 export TELEGRAM_BOT_TOKEN=your_token
 export TELEGRAM_CHANNEL_ID=your_id
 ./.build/release/iOSFeedBot
+```
+
+## Metrics Dashboard
+The bot records each run to SQLite. Start the dashboard as a long-running process:
+
+```bash
+export METRICS_DB_PATH=/root/ios-feed/metrics.sqlite
+export DASHBOARD_USERNAME=your_user
+export DASHBOARD_PASSWORD=your_password
+export DASHBOARD_HOST=0.0.0.0
+export DASHBOARD_PORT=8080
+./.build/release/iOSFeedDashboard
+```
+
+Open `http://89.167.48.211:8080` and sign in with the configured Basic auth credentials. The page refreshes metrics every 5 seconds.
+
+Example systemd unit:
+
+```ini
+[Unit]
+Description=iOS Feed Metrics Dashboard
+After=network.target
+
+[Service]
+WorkingDirectory=/root/ios-feed
+Environment=METRICS_DB_PATH=/root/ios-feed/metrics.sqlite
+Environment=DASHBOARD_USERNAME=your_user
+Environment=DASHBOARD_PASSWORD=your_password
+Environment=DASHBOARD_HOST=0.0.0.0
+Environment=DASHBOARD_PORT=8080
+ExecStart=/root/ios-feed/.build/release/iOSFeedDashboard
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ## Deployment on VPS

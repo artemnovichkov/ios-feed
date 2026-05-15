@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class MetadataService {
+final class MetadataService: Sendable {
     func fetchOGImageURL(for urlString: String) async -> String? {
         guard let url = URL(string: urlString) else { return nil }
         

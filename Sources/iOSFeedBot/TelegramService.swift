@@ -7,8 +7,8 @@ enum TelegramError: Error {
     case invalidResponse(Int)
 }
 
-class TelegramService {
-    func sendMessage(_ text: String) async throws {
+final class TelegramService: Sendable {
+    func sendMessage(_ text: String) async throws -> Int? {
         try await performAction(method: "sendMessage", payload: [
             "chat_id": Config.telegramChannelId,
             "text": text,
@@ -16,7 +16,7 @@ class TelegramService {
         ])
     }
 
-    func sendPhoto(url: String, caption: String) async throws {
+    func sendPhoto(url: String, caption: String) async throws -> Int? {
         try await performAction(method: "sendPhoto", payload: [
             "chat_id": Config.telegramChannelId,
             "photo": url,
@@ -25,9 +25,21 @@ class TelegramService {
         ])
     }
 
-    private func performAction(method: String, payload: [String: Any]) async throws {
+    func getChatMemberCount() async throws -> Int {
+        let response: TelegramAPIResponse<Int> = try await performAction(method: "getChatMemberCount", payload: [
+            "chat_id": Config.telegramChannelId
+        ])
+        return response.result
+    }
+
+    private func performAction(method: String, payload: [String: Any]) async throws -> Int? {
+        let response: TelegramAPIResponse<TelegramMessage> = try await performAction(method: method, payload: payload)
+        return response.result.messageID
+    }
+
+    private func performAction<Response: Decodable>(method: String, payload: [String: Any]) async throws -> TelegramAPIResponse<Response> {
         let urlString = "https://api.telegram.org/bot\(Config.telegramBotToken)/\(method)"
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else { throw TelegramError.invalidResponse(0) }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -48,5 +60,20 @@ class TelegramService {
             }
             throw TelegramError.invalidResponse(httpResponse.statusCode)
         }
+
+        return try JSONDecoder().decode(TelegramAPIResponse<Response>.self, from: data)
+    }
+}
+
+struct TelegramAPIResponse<Result: Decodable>: Decodable {
+    let ok: Bool
+    let result: Result
+}
+
+struct TelegramMessage: Decodable {
+    let messageID: Int
+
+    enum CodingKeys: String, CodingKey {
+        case messageID = "message_id"
     }
 }
