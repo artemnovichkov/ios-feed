@@ -34,6 +34,7 @@ do {
     let directoryService = DirectoryService()
     let feedService = FeedService()
     let aiService = AIService()
+    let articleContentService = ArticleContentService()
     let metadataService = MetadataService()
     let telegramService = TelegramService()
     
@@ -49,19 +50,27 @@ do {
         exit(0)
     }
     
-    print("Selecting best article and generating post...")
-    let result = try await aiService.generatePost(articles: articles)
-    
-    if result.post.isEmpty {
+    print("Selecting best article...")
+    let selectedArticle = try await aiService.selectArticle(from: articles)
+
+    print("Fetching selected article content...")
+    let articleContent = await articleContentService.fetchContent(for: selectedArticle.url)
+        ?? selectedArticle.description
+        ?? ""
+
+    print("Generating post from article content...")
+    let post = try await aiService.generatePost(for: selectedArticle, content: articleContent)
+
+    if post.isEmpty {
          print("AI failed to generate a post.")
          exit(0)
     }
     
     // Add UTM parameters to the URL
-    let trackedURL = appendUTMParameters(to: result.url)
+    let trackedURL = appendUTMParameters(to: selectedArticle.url)
     
     // Format the post with a hyperlinked title
-    var lines = result.post.components(separatedBy: .newlines)
+    var lines = post.components(separatedBy: .newlines)
     if !lines.isEmpty {
         let title = lines[0]
         lines[0] = "<a href=\"\(trackedURL)\"><b>\(escapeHTML(title))</b></a>"
@@ -74,7 +83,7 @@ do {
     let formattedPost = lines.joined(separator: "\n")
     
     print("Fetching OG image...")
-    let ogImageURL = await metadataService.fetchOGImageURL(for: result.url)
+    let ogImageURL = await metadataService.fetchOGImageURL(for: selectedArticle.url)
     
     if let ogImageURL = ogImageURL {
         print("Publishing to Telegram with image...")
