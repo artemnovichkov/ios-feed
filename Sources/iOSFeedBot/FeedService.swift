@@ -4,7 +4,7 @@ import FeedKit
 import FoundationNetworking
 #endif
 
-class FeedService {
+struct FeedService {
     func fetchArticles(from blog: Blog) async -> [Article] {
         guard let feedUrlString = blog.feedUrl, let url = URL(string: feedUrlString) else { return [] }
         
@@ -25,13 +25,13 @@ class FeedService {
                         case .rss(let rssFeed):
                             articles = rssFeed.items?.compactMap { item in
                                 guard let pubDate = item.pubDate else { return nil }
-                                return Article(title: item.title ?? "", url: item.link ?? "", description: self.stripHTML(item.description), pubDate: pubDate)
+                                return Article(title: item.title ?? "", url: item.link ?? "", description: Self.stripHTML(item.description), pubDate: pubDate)
                             } ?? []
                         case .atom(let atomFeed):
                             articles = atomFeed.entries?.compactMap { entry in
                                 guard let pubDate = entry.published ?? entry.updated else { return nil }
                                 let link = entry.links?.first(where: { $0.attributes?.rel == "alternate" })?.attributes?.href ?? entry.links?.first?.attributes?.href ?? ""
-                                return Article(title: entry.title ?? "", url: link, description: self.stripHTML(entry.summary?.value), pubDate: pubDate)
+                                return Article(title: entry.title ?? "", url: link, description: Self.stripHTML(entry.summary?.value), pubDate: pubDate)
                             } ?? []
                         default: break
                         }
@@ -47,7 +47,7 @@ class FeedService {
         }
     }
 
-    private func stripHTML(_ string: String?) -> String? {
+    private static func stripHTML(_ string: String?) -> String? {
         guard let string = string else { return nil }
         return string.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
