@@ -7,29 +7,64 @@ enum AIError: Error {
     case invalidResponse(Int)
     case emptyResponse
     case invalidSelection
+    case invalidStructuredOutput
 }
 
 class AIService {
     private static let maxArticleContentCharacters = 12_000
+    private static let selectionSchema = JSONValue.object([
+        "type": .string("object"),
+        "properties": .object([
+            "selectedArticleID": .object([
+                "type": .string("integer")
+            ])
+        ]),
+        "required": .array([.string("selectedArticleID")]),
+        "additionalProperties": .bool(false)
+    ])
+    private static let postSchema = JSONValue.object([
+        "type": .string("object"),
+        "properties": .object([
+            "title": .object([
+                "type": .string("string")
+            ]),
+            "summary": .object([
+                "type": .string("string")
+            ]),
+            "hashtags": .object([
+                "type": .string("array"),
+                "items": .object([
+                    "type": .string("string")
+                ])
+            ])
+        ]),
+        "required": .array([.string("title"), .string("summary"), .string("hashtags")]),
+        "additionalProperties": .bool(false)
+    ])
 
     func selectArticle(from articles: [Article]) async throws -> Article {
         guard !articles.isEmpty else { throw AIError.emptyResponse }
 
         let prompt = Self.buildSelectionPrompt(articles: articles)
-        let content = try await sendPrompt(prompt)
+        let selection: ArticleSelection = try await sendPrompt(
+            prompt,
+            responseFormat: ResponseFormat(name: "article_selection", schema: Self.selectionSchema)
+        )
 
-        guard let selectedID = Self.parseSelectedArticleID(from: content),
-              articles.indices.contains(selectedID - 1) else {
+        guard articles.indices.contains(selection.selectedArticleID - 1) else {
             throw AIError.invalidSelection
         }
 
-        return articles[selectedID - 1]
+        return articles[selection.selectedArticleID - 1]
     }
 
     func generatePost(for article: Article, content: String) async throws -> String {
         let prompt = Self.buildPostPrompt(article: article, content: content)
-        let response = try await sendPrompt(prompt)
-        return try Self.parsePost(from: response)
+        let response: GeneratedPost = try await sendPrompt(
+            prompt,
+            responseFormat: ResponseFormat(name: "telegram_post", schema: Self.postSchema)
+        )
+        return Self.formatPost(response)
     }
 
     func generatePost(articles: [Article]) async throws -> (url: String, post: String) {
@@ -56,12 +91,8 @@ class AIService {
         Please select the single most interesting and technically valuable article.
         Select only an article written in English.
 
-        Your response MUST follow this exact format:
-        ID: [The number of the selected article]
-
         Instructions:
-        - Return ONLY the ID line as specified above.
-        - Do not use markdown code blocks or additional chatter.
+        - Return the selected article number in the selectedArticleID field.
         """
     }
 
@@ -81,47 +112,39 @@ class AIService {
         Article content:
         \(articleContent)
 
-        Your response MUST follow this exact format:
-        POST:
-        [Title of the Article]
-
-        [A short summary (2-3 sentences) based on the article content, explaining why it is interesting for iOS developers]
-
-        #[Hashtag1] #[Hashtag2] #[SourceDomain]
-
         Instructions:
-        - Return ONLY the post text as specified above.
-        - Do not use markdown code blocks or additional chatter.
+        - Return the article title in the title field.
+        - Return a short summary (2-3 sentences) based on the article content in the summary field.
+        - Return hashtags in the hashtags field, including a sanitized source domain hashtag.
         - Ensure hashtags are valid (alphanumeric, no dots/spaces/special characters).
         - Sanitize the SourceDomain hashtag (e.g., "iosdev.com" -> "#iosdev").
         """
     }
 
-    static func parseSelectedArticleID(from content: String) -> Int? {
-        let pattern = #"(?i)\bID:\s*(\d+)\b"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: content, range: NSRange(content.startIndex..., in: content)),
-              let range = Range(match.range(at: 1), in: content) else {
-            return nil
-        }
+    static func formatPost(_ post: GeneratedPost) -> String {
+        let hashtags = post.hashtags
+            .map { hashtag in
+                hashtag.hasPrefix("#") ? hashtag : "#\(hashtag)"
+            }
+            .joined(separator: " ")
 
-        return Int(content[range])
+        return """
+        \(post.title)
+
+        \(post.summary)
+
+        \(hashtags)
+        """
     }
 
-    static func parsePost(from content: String) throws -> String {
-        let lines = content.components(separatedBy: .newlines)
-        guard let postIndex = lines.firstIndex(where: { $0.hasPrefix("POST:") }) else {
-            throw AIError.emptyResponse
-        }
-
-        let post = lines[(postIndex + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !post.isEmpty else { throw AIError.emptyResponse }
-
-        return post
-    }
-
-    private func sendPrompt(_ prompt: String) async throws -> String {
-        let requestBody = OpenAIRequest(messages: [.init(role: "user", content: prompt)])
+    private func sendPrompt<Output: Decodable>(
+        _ prompt: String,
+        responseFormat: ResponseFormat
+    ) async throws -> Output {
+        let requestBody = OpenAIRequest(
+            messages: [.init(role: "user", content: prompt)],
+            responseFormat: responseFormat
+        )
         let data = try JSONEncoder().encode(requestBody)
 
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
@@ -146,8 +169,26 @@ class AIService {
             throw AIError.emptyResponse
         }
 
-        return content
+        guard let outputData = content.data(using: .utf8) else {
+            throw AIError.invalidStructuredOutput
+        }
+
+        do {
+            return try JSONDecoder().decode(Output.self, from: outputData)
+        } catch {
+            throw AIError.invalidStructuredOutput
+        }
     }
+}
+
+struct ArticleSelection: Codable, Sendable {
+    let selectedArticleID: Int
+}
+
+struct GeneratedPost: Codable, Sendable {
+    let title: String
+    let summary: String
+    let hashtags: [String]
 }
 
 struct OpenAIResponse: Codable {

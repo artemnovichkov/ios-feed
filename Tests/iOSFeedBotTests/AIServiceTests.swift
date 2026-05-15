@@ -23,7 +23,7 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("1. First Post (https://example.com/first)"))
         XCTAssertTrue(prompt.contains("2. Second Post (https://example.com/second)"))
         XCTAssertTrue(prompt.contains("Feed description: Feed summary"))
-        XCTAssertTrue(prompt.contains("ID: [The number of the selected article]"))
+        XCTAssertTrue(prompt.contains("selectedArticleID"))
     }
 
     func testPostPromptUsesArticleContentAsSummarySource() {
@@ -44,21 +44,44 @@ final class AIServiceTests: XCTestCase {
         XCTAssertFalse(prompt.contains("Short feed description"))
     }
 
-    func testParseSelectedArticleID() {
-        XCTAssertEqual(AIService.parseSelectedArticleID(from: "ID: 3"), 3)
-        XCTAssertEqual(AIService.parseSelectedArticleID(from: "id: 12"), 12)
-        XCTAssertNil(AIService.parseSelectedArticleID(from: "Article 3"))
+    func testOpenAIRequestEncodesStructuredResponseFormat() throws {
+        let request = OpenAIRequest(
+            messages: [.init(role: "user", content: "Select an article")],
+            responseFormat: ResponseFormat(
+                name: "article_selection",
+                schema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "selectedArticleID": .object([
+                            "type": .string("integer")
+                        ])
+                    ]),
+                    "required": .array([.string("selectedArticleID")]),
+                    "additionalProperties": .bool(false)
+                ])
+            )
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let responseFormat = json?["response_format"] as? [String: Any]
+        let jsonSchema = responseFormat?["json_schema"] as? [String: Any]
+        let schema = jsonSchema?["schema"] as? [String: Any]
+
+        XCTAssertEqual(responseFormat?["type"] as? String, "json_schema")
+        XCTAssertEqual(jsonSchema?["name"] as? String, "article_selection")
+        XCTAssertEqual(jsonSchema?["strict"] as? Bool, true)
+        XCTAssertEqual(schema?["additionalProperties"] as? Bool, false)
     }
 
-    func testParsePostReturnsContentAfterPostMarker() throws {
-        let post = try AIService.parsePost(from: """
-        POST:
-        Article Title
-
-        Summary text.
-
-        #Swift #iOS #example
-        """)
+    func testFormatPostBuildsTelegramPostFromStructuredOutput() {
+        let post = AIService.formatPost(
+            GeneratedPost(
+                title: "Article Title",
+                summary: "Summary text.",
+                hashtags: ["Swift", "#iOS", "example"]
+            )
+        )
 
         XCTAssertEqual(post, "Article Title\n\nSummary text.\n\n#Swift #iOS #example")
     }
