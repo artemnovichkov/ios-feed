@@ -38,6 +38,7 @@ class AIService {
         
         Instructions:
         - Return ONLY the URL and the post text as specified above.
+        - Select only an article written in English.
         - Do not use markdown code blocks or additional chatter.
         - Ensure hashtags are valid (alphanumeric, no dots/spaces/special characters).
         - Sanitize the SourceDomain hashtag (e.g., "iosdev.com" -> "#iosdev").

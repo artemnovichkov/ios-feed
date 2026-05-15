@@ -13,6 +13,10 @@ let package = Package(
             dependencies: [
                 .product(name: "FeedKit", package: "FeedKit")
             ]
+        ),
+        .testTarget(
+            name: "iOSFeedBotTests",
+            dependencies: ["iOSFeedBot"]
         )
     ]
 )

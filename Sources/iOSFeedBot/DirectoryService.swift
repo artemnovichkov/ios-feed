@@ -20,18 +20,24 @@ class DirectoryService {
             throw DirectoryError.invalidResponse
         }
         
-        struct Language: Codable {
-            let categories: [Category]
-        }
-        
-        struct Category: Codable {
-            let sites: [Blog]
-        }
-        
-        let languages = try JSONDecoder().decode([Language].self, from: data)
+        return try Self.parseBlogs(from: data)
+    }
+
+    static func parseBlogs(from data: Data, languageCode: String = "en") throws -> [Blog] {
+        let languages = try JSONDecoder().decode([DirectoryLanguage].self, from: data)
         return languages
+            .filter { $0.language == languageCode }
             .flatMap { $0.categories }
             .flatMap { $0.sites }
             .filter { $0.feedUrl != nil }
     }
+}
+
+private struct DirectoryLanguage: Codable {
+    let language: String
+    let categories: [DirectoryCategory]
+}
+
+private struct DirectoryCategory: Codable {
+    let sites: [Blog]
 }
