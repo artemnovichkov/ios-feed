@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import CSQLite
 
 public enum MetricsStoreError: Error {
     case openFailed(String)

@@ -8,8 +8,16 @@ let package = Package(
         .package(url: "https://github.com/nmdias/FeedKit.git", from: "9.1.2")
     ],
     targets: [
+        .systemLibrary(
+            name: "CSQLite",
+            pkgConfig: "sqlite3",
+            providers: [
+                .apt(["libsqlite3-dev"])
+            ]
+        ),
         .target(
             name: "iOSFeedMetrics",
+            dependencies: ["CSQLite"],
             linkerSettings: [
                 .linkedLibrary("sqlite3")
             ]
