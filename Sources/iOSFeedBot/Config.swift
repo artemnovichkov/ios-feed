@@ -16,7 +16,7 @@ enum Config {
 
         if !missingConfigs.isEmpty {
             let message = "Error: Missing configuration environment variables: \(missingConfigs.joined(separator: ", "))"
-            fputs("\(message)\n", stderr)
+            FileHandle.standardError.write(Data("\(message)\n".utf8))
             exit(1)
         }
     }
