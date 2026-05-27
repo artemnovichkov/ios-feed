@@ -132,17 +132,26 @@ final class AIService: @unchecked Sendable {
         Instructions:
         - Return the article title in the title field.
         - Return a short summary (2-3 sentences) based on the article content in the summary field.
-        - Return hashtags in the hashtags field, including a sanitized source domain hashtag.
-        - Ensure hashtags are valid (alphanumeric, no dots/spaces/special characters).
-        - Sanitize the SourceDomain hashtag (e.g., "iosdev.com" -> "#iosdev").
+        - Return hashtags in the hashtags field, including a source domain hashtag.
+        - Each hashtag must contain ONLY letters and digits — no spaces, dots, hyphens, or special characters.
+        - Write each hashtag as a single word without the # symbol (e.g. "SwiftUI", "iOSDev", "WWDC25").
+        - For domain-based hashtags strip all punctuation (e.g. "ios.dev" → "iosdev", "swift-evolution.org" → "swiftevolution").
         """
+    }
+
+    static func sanitizeHashtag(_ hashtag: String) -> String {
+        let raw = hashtag.hasPrefix("#") ? String(hashtag.dropFirst()) : hashtag
+        let sanitized = raw.unicodeScalars
+            .filter { CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_")).contains($0) }
+            .map { String($0) }
+            .joined()
+        return sanitized.isEmpty ? "" : "#\(sanitized)"
     }
 
     static func formatPost(_ post: GeneratedPost) -> String {
         let hashtags = post.hashtags
-            .map { hashtag in
-                hashtag.hasPrefix("#") ? hashtag : "#\(hashtag)"
-            }
+            .map { sanitizeHashtag($0) }
+            .filter { !$0.isEmpty }
             .joined(separator: " ")
 
         return """

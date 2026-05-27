@@ -85,4 +85,25 @@ final class AIServiceTests: XCTestCase {
 
         XCTAssertEqual(post, "Article Title\n\nSummary text.\n\n#Swift #iOS #example")
     }
+
+    func testSanitizeHashtagStripsSpecialCharacters() {
+        XCTAssertEqual(AIService.sanitizeHashtag("ios.dev"), "#iosdev")
+        XCTAssertEqual(AIService.sanitizeHashtag("Swift UI"), "#SwiftUI")
+        XCTAssertEqual(AIService.sanitizeHashtag("#swift-evolution"), "#swiftevolution")
+        XCTAssertEqual(AIService.sanitizeHashtag("WWDC25"), "#WWDC25")
+        XCTAssertEqual(AIService.sanitizeHashtag("#iOSDev"), "#iOSDev")
+        XCTAssertEqual(AIService.sanitizeHashtag("..."), "")
+    }
+
+    func testFormatPostSanitizesHashtags() {
+        let post = AIService.formatPost(
+            GeneratedPost(
+                title: "Title",
+                summary: "Summary.",
+                hashtags: ["Swift UI", "ios.dev", "#valid"]
+            )
+        )
+
+        XCTAssertEqual(post, "Title\n\nSummary.\n\n#SwiftUI #iosdev #valid")
+    }
 }
