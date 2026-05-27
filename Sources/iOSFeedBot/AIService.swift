@@ -136,6 +136,7 @@ final class AIService: @unchecked Sendable {
         - Each hashtag must contain ONLY letters and digits — no spaces, dots, hyphens, or special characters.
         - Write each hashtag as a single word without the # symbol (e.g. "SwiftUI", "iOSDev", "WWDC25").
         - For domain-based hashtags strip all punctuation (e.g. "ios.dev" → "iosdev", "swift-evolution.org" → "swiftevolution").
+        - Write the summary in third person ("The author explains...", "This article covers..."). Never use "we", "our", or first-person plural — the channel is sharing, not authoring.
         """
     }
 
