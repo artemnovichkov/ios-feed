@@ -102,14 +102,14 @@ final class AIService: @unchecked Sendable {
         }.joined(separator: "\n")
 
         return """
-        I have a list of iOS development articles published in the last 24 hours:
+        I have a list of iOS development content published in the last 24 hours (articles, open source releases, framework updates):
         \(articleList)
 
-        Please select the single most interesting and technically valuable article.
-        Select only an article written in English.
+        Please select the single most interesting and technically valuable item.
+        Select only an item written in English.
 
         Instructions:
-        - Return the selected article number in the selectedArticleID field.
+        - Return the selected item number in the selectedArticleID field.
         """
     }
 
@@ -121,22 +121,26 @@ final class AIService: @unchecked Sendable {
         )
 
         return """
-        Generate a Telegram post for this iOS development article.
+        Generate a Telegram post for this iOS development content.
 
         Title: \(article.title)
         URL: \(article.url)
 
-        Article content:
+        Content:
         \(articleContent)
 
         Instructions:
-        - Return the article title in the title field.
-        - Return a short summary (2-3 sentences) based on the article content in the summary field.
+        - Determine whether this is an article/tutorial or an open source framework/library release.
+        - Return the title in the title field.
+        - Return a short summary (2-3 sentences) in the summary field:
+          - Write naturally and engagingly — vary the sentence structure each time.
+          - Do NOT open with a template phrase like "The author introduces", "The article discusses", "This article covers", or any fixed formula. Lead with what's actually interesting: the problem solved, the technique used, the key insight, or what makes this worth reading.
+          - For frameworks/libraries: focus on what it does, what problem it solves, or what changed in this release.
+        - Never use "we", "our", or first-person plural — the channel is sharing, not authoring.
         - Return hashtags in the hashtags field, including a source domain hashtag.
         - Each hashtag must contain ONLY letters and digits — no spaces, dots, hyphens, or special characters.
         - Write each hashtag as a single word without the # symbol (e.g. "SwiftUI", "iOSDev", "WWDC25").
         - For domain-based hashtags strip all punctuation (e.g. "ios.dev" → "iosdev", "swift-evolution.org" → "swiftevolution").
-        - Write the summary in third person ("The author explains...", "This article covers..."). Never use "we", "our", or first-person plural — the channel is sharing, not authoring.
         """
     }
 

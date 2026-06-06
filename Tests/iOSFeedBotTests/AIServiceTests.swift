@@ -39,8 +39,9 @@ final class AIServiceTests: XCTestCase {
             content: "Full page text about the implementation details."
         )
 
-        XCTAssertTrue(prompt.contains("Article content:\nFull page text about the implementation details."))
-        XCTAssertTrue(prompt.contains("based on the article content"))
+        XCTAssertTrue(prompt.contains("Content:\nFull page text about the implementation details."))
+        XCTAssertTrue(prompt.contains("article/tutorial or an open source framework"))
+        XCTAssertTrue(prompt.contains("Do NOT open with a template phrase"))
         XCTAssertFalse(prompt.contains("Short feed description"))
     }
 

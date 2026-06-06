@@ -54,17 +54,18 @@ Prefer focused tests for URL formatting, HTML escaping, config validation, feed 
 
 Production runs on the Hetzner VPS `89.167.48.211` as `root`. The checkout lives at `/root/ios-feed`, and cron runs `/root/ios_feed_run.sh` daily at 09:00 server time. That script owns production environment variables and executes `/root/ios-feed/.build/release/iOSFeedBot`.
 
-Deploy only after pushing `main`:
+Deploy is automated by GitHub Actions. Every push to `main` runs `.github/workflows/deploy.yml`, which SSHes into the VPS and runs:
 
 ```bash
-ssh root@89.167.48.211
 cd /root/ios-feed
 git pull --ff-only origin main
 swift test
 swift build -c release
 ```
 
-Do not run the bot manually during deployment unless an extra Telegram post is intended. Check `/root/ios_feed.log` for runtime output.
+The workflow uses GitHub repository secrets `VPS_HOST`, `VPS_USER`, `VPS_PORT`, and `VPS_SSH_KEY`. Keep these secrets current if the VPS address, SSH user, port, or deploy key changes.
+
+For manual fallback or debugging, SSH to `root@89.167.48.211` and run the same commands above. Do not run the bot manually during deployment unless an extra Telegram post is intended. Check `/root/ios_feed.log` for runtime output.
 
 ## Commit & Pull Request Guidelines
 
