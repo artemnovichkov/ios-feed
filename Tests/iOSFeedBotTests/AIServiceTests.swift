@@ -24,6 +24,28 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("2. Second Post (https://example.com/second)"))
         XCTAssertTrue(prompt.contains("Feed description: Feed summary"))
         XCTAssertTrue(prompt.contains("selectedArticleID"))
+        XCTAssertFalse(prompt.contains("already posted about these recently"))
+    }
+
+    func testSelectionPromptIncludesRecentPostsToAvoidRepeats() {
+        let articles = [
+            Article(
+                title: "Fresh Post",
+                url: "https://example.com/fresh",
+                description: nil,
+                pubDate: Date()
+            )
+        ]
+
+        let prompt = AIService.buildSelectionPrompt(
+            articles: articles,
+            recentPostTitles: ["SomePackage - 4.11.0", "Another Article"]
+        )
+
+        XCTAssertTrue(prompt.contains("already posted about these recently"))
+        XCTAssertTrue(prompt.contains("- SomePackage - 4.11.0"))
+        XCTAssertTrue(prompt.contains("- Another Article"))
+        XCTAssertTrue(prompt.contains("must not repeat itself"))
     }
 
     func testPostPromptUsesArticleContentAsSummarySource() {

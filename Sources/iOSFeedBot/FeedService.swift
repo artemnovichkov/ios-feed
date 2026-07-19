@@ -53,8 +53,8 @@ struct FeedService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    func fetchAllRecent(blogs: [Blog]) async -> [Article] {
-        let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
+    func fetchAllRecent(blogs: [Blog], maxAge: TimeInterval = 24 * 60 * 60) async -> [Article] {
+        let cutoff = Date().addingTimeInterval(-maxAge)
         let maxConcurrentTasks = 15
         
         return await withTaskGroup(of: [Article].self) { group in
@@ -72,7 +72,7 @@ struct FeedService {
             
             // As tasks finish, add new ones until all blogs are processed
             for await articles in group {
-                all.append(contentsOf: articles.filter { $0.pubDate > yesterday })
+                all.append(contentsOf: articles.filter { $0.pubDate > cutoff })
                 
                 if index < blogs.count {
                     let blog = blogs[index]

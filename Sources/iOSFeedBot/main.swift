@@ -91,18 +91,42 @@ do {
     let metadataService = MetadataService()
     let telegramService = TelegramService()
     
+    let postHistory = ((try? metricsStore?.telegramPosts(limit: 300)) ?? [])
+        .filter { $0.status == "success" }
+
+    // Exactly one post per day: extra runs (retries, manual launches) become no-ops.
+    let startOfToday = Calendar.current.startOfDay(for: Date())
+    if postHistory.contains(where: { $0.postedAt >= startOfToday }) {
+        print("Already posted today — skipping.")
+        if let metricsStore, let runID {
+            try? metricsStore.finishRun(
+                id: runID,
+                status: "success",
+                durationMilliseconds: elapsedMilliseconds(since: runStartedAt),
+                articlesFound: 0,
+                selectedArticleTitle: nil,
+                selectedArticleURL: nil,
+                errorMessage: nil
+            )
+        }
+        Foundation.exit(0)
+    }
+
     print("Fetching blog directory...")
     let blogs = try await measure("directory_fetch", metricsStore: metricsStore, runID: runID) {
         try await directoryService.fetchBlogs()
     }
-    
+
     print("Fetching recent articles from \(blogs.count) feeds...")
+    // Fetch a 72h window so there is a backfill pool when everything fresh was already posted.
     let articles = try await measure("feed_fetch", metricsStore: metricsStore, runID: runID) {
-        await feedService.fetchAllRecent(blogs: blogs)
+        await feedService.fetchAllRecent(blogs: blogs, maxAge: 72 * 60 * 60)
     }
-    articlesFound = articles.count
-    print("Found \(articles.count) articles in the last 24h.")
-    
+    let last24Hours = Date().addingTimeInterval(-24 * 60 * 60)
+    let freshArticles = articles.filter { $0.pubDate > last24Hours }
+    articlesFound = freshArticles.count
+    print("Found \(freshArticles.count) articles in the last 24h (\(articles.count) in the last 72h).")
+
     if articles.isEmpty {
         print("No new articles found.")
         if let metricsStore, let runID {
@@ -119,9 +143,55 @@ do {
         Foundation.exit(0)
     }
     
+    print("Filtering out previously posted articles...")
+    let postedURLs = Set(postHistory.compactMap { $0.articleURL }.map(ArticleFilter.normalizeURL))
+    let repostCutoff = Date().addingTimeInterval(-30 * 24 * 60 * 60)
+    let recentlyPostedURLs = Set(
+        postHistory
+            .filter { $0.postedAt > repostCutoff }
+            .compactMap { $0.articleURL }
+            .map(ArticleFilter.normalizeURL)
+    )
+
+    let (candidates, tier) = ArticleFilter.candidates(
+        freshArticles: freshArticles,
+        allArticles: articles,
+        postedURLs: postedURLs,
+        recentlyPostedURLs: recentlyPostedURLs
+    )
+    switch tier {
+    case .fresh:
+        print("\(candidates.count) unique candidates from the last 24h.")
+    case .backfill:
+        print("Nothing unposted in the last 24h — falling back to the 72h window (\(candidates.count) candidates).")
+    case .repost:
+        print("Nothing unposted in the last 72h — allowing reposts older than 30 days (\(candidates.count) candidates).")
+    }
+
+    if candidates.isEmpty {
+        print("No new unique articles found.")
+        if let metricsStore, let runID {
+            try? metricsStore.finishRun(
+                id: runID,
+                status: "success",
+                durationMilliseconds: elapsedMilliseconds(since: runStartedAt),
+                articlesFound: articlesFound,
+                selectedArticleTitle: nil,
+                selectedArticleURL: nil,
+                errorMessage: nil
+            )
+        }
+        Foundation.exit(0)
+    }
+
+    let recentPostWindow = Date().addingTimeInterval(-14 * 24 * 60 * 60)
+    let recentPostTitles = postHistory
+        .filter { $0.postedAt > recentPostWindow }
+        .compactMap { $0.title }
+
     print("Selecting best article...")
     let selectedArticle = try await measure("article_selection", metricsStore: metricsStore, runID: runID) {
-        try await aiService.selectArticle(from: articles)
+        try await aiService.selectArticle(from: candidates, recentPostTitles: recentPostTitles)
     }
     selectedArticleForMetrics = selectedArticle
 

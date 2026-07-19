@@ -57,10 +57,10 @@ final class AIService: @unchecked Sendable {
         self.pricing = pricing
     }
 
-    func selectArticle(from articles: [Article]) async throws -> Article {
+    func selectArticle(from articles: [Article], recentPostTitles: [String] = []) async throws -> Article {
         guard !articles.isEmpty else { throw AIError.emptyResponse }
 
-        let prompt = Self.buildSelectionPrompt(articles: articles)
+        let prompt = Self.buildSelectionPrompt(articles: articles, recentPostTitles: recentPostTitles)
         let selection: ArticleSelection = try await sendPrompt(
             prompt,
             operation: "article_selection",
@@ -92,7 +92,7 @@ final class AIService: @unchecked Sendable {
         return (article.url, post)
     }
 
-    static func buildSelectionPrompt(articles: [Article]) -> String {
+    static func buildSelectionPrompt(articles: [Article], recentPostTitles: [String] = []) -> String {
         let articleList = articles.enumerated().map { index, article in
             var text = "\(index + 1). \(article.title) (\(article.url))"
             if let description = article.description, !description.isEmpty {
@@ -101,14 +101,28 @@ final class AIService: @unchecked Sendable {
             return text
         }.joined(separator: "\n")
 
+        var recentSection = ""
+        if !recentPostTitles.isEmpty {
+            let recentList = recentPostTitles.map { "- \($0)" }.joined(separator: "\n")
+            recentSection = """
+
+
+            The channel has already posted about these recently:
+            \(recentList)
+            """
+        }
+
         return """
         I have a list of iOS development content published in the last 24 hours (articles, open source releases, framework updates):
-        \(articleList)
+        \(articleList)\(recentSection)
 
         Please select the single most interesting and technically valuable item.
         Select only an item written in English.
 
         Instructions:
+        - Never select an item about the same library, project, or topic as a recent post above — the channel must not repeat itself.
+        - Feed descriptions are written by the authors and often read like marketing. Judge by substance, not by the length of a feature list.
+        - Prefer articles and tutorials with real insight over routine package version bumps. Select a package release only if it is a major, genuinely noteworthy update.
         - Return the selected item number in the selectedArticleID field.
         """
     }
