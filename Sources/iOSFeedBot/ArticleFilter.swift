@@ -18,16 +18,72 @@ enum ArticleFilter {
         postedURLs: Set<String>,
         recentlyPostedURLs: Set<String>
     ) -> (articles: [Article], tier: CandidateTier) {
-        let fresh = uniqueArticles(freshArticles, excludingPostedURLs: postedURLs)
+        let fresh = technicalCandidates(uniqueArticles(freshArticles, excludingPostedURLs: postedURLs))
         if !fresh.isEmpty {
             return (fresh, .fresh)
         }
-        let backfill = uniqueArticles(allArticles, excludingPostedURLs: postedURLs)
+        let backfill = technicalCandidates(uniqueArticles(allArticles, excludingPostedURLs: postedURLs))
         if !backfill.isEmpty {
             return (backfill, .backfill)
         }
-        return (uniqueArticles(allArticles, excludingPostedURLs: recentlyPostedURLs), .repost)
+        return (
+            technicalCandidates(uniqueArticles(allArticles, excludingPostedURLs: recentlyPostedURLs)),
+            .repost
+        )
     }
+
+    /// Drops marketing/business items from a candidate pool, but never empties it:
+    /// if nothing technical is left, the original pool is kept so a daily post is still possible.
+    static func technicalCandidates(_ articles: [Article]) -> [Article] {
+        let technical = articles.filter { !isMarketingContent(title: $0.title, description: $0.description) }
+        return technical.isEmpty ? articles : technical
+    }
+
+    /// True for growth/monetization/business content that mentions no technical subject.
+    /// A technical keyword anywhere cancels the match, so posts like
+    /// "Building a paywall with StoreKit 2" stay in the pool.
+    static func isMarketingContent(title: String, description: String?) -> Bool {
+        let text = [title, description ?? ""].joined(separator: " ")
+        let tokens = text
+            .lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+        let normalized = " " + tokens.joined(separator: " ") + " "
+        let tokenSet = Set(tokens)
+
+        func matches(_ keywords: [String]) -> Bool {
+            keywords.contains { keyword in
+                keyword.contains(" ") ? normalized.contains(" \(keyword) ") : tokenSet.contains(keyword)
+            }
+        }
+
+        return matches(marketingKeywords) && !matches(technicalKeywords)
+    }
+
+    private static let marketingKeywords = [
+        "marketing", "marketer", "aso", "app store optimization", "user acquisition",
+        "growth", "monetization", "monetize", "monetizing", "revenue", "mrr", "ltv",
+        "roas", "cpi", "ctr", "paywall", "paywalls", "pricing", "affiliate", "affiliates",
+        "commission", "commissions", "payout", "payouts", "ads", "advertising",
+        "advertisement", "advertisements", "campaign", "campaigns", "conversion",
+        "conversions", "churn", "funnel", "seo", "sponsorship", "sponsor", "branding",
+        "solopreneur", "indie hacker", "founder", "founders", "sales", "promo",
+        "promotion", "promoting", "product hunt", "influencer", "impressions",
+        "subscribers", "profit", "pitch"
+    ]
+
+    private static let technicalKeywords = [
+        "swift", "swiftui", "uikit", "appkit", "xcode", "storekit", "swiftdata",
+        "coredata", "combine", "metal", "arkit", "widgetkit", "api", "apis", "sdk",
+        "concurrency", "actor", "actors", "async", "await", "sendable", "protocol",
+        "generics", "compiler", "runtime", "memory", "crash", "crashes", "debug",
+        "debugging", "performance", "benchmark", "profiling", "instruments",
+        "algorithm", "cache", "caching", "networking", "urlsession", "macro", "macros",
+        "package", "spm", "swiftpm", "testing", "xctest", "animation", "layout",
+        "accessibility", "keychain", "encryption", "threading", "observable",
+        "architecture", "refactoring", "linker", "binary", "code", "implementation",
+        "extension", "extensions", "framework", "frameworks", "wwdc"
+    ]
 
     /// Normalizes a URL to a stable key for deduplication:
     /// lowercased host without "www.", no scheme, no query/fragment, no trailing slash.

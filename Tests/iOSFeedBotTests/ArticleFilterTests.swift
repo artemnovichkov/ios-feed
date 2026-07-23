@@ -85,6 +85,67 @@ final class ArticleFilterTests: XCTestCase {
         XCTAssertEqual(repost.articles.map(\.title), ["Older unposted"])
     }
 
+    func testMarketingContentDetection() {
+        XCTAssertTrue(
+            ArticleFilter.isMarketingContent(
+                title: "Make Ugly Ads to Grow Your App",
+                description: "Why ugly ads capture more attention than polished ones."
+            )
+        )
+        XCTAssertTrue(
+            ArticleFilter.isMarketingContent(
+                title: "How Reduced App Store Commissions Change Your Affiliate Payout Math",
+                description: nil
+            )
+        )
+        // Technical keywords cancel the marketing signal.
+        XCTAssertFalse(
+            ArticleFilter.isMarketingContent(
+                title: "Building a paywall with StoreKit 2",
+                description: "Implementing subscription pricing with the SubscriptionStoreView API."
+            )
+        )
+        XCTAssertFalse(
+            ArticleFilter.isMarketingContent(
+                title: "Understanding actor reentrancy in Swift",
+                description: nil
+            )
+        )
+    }
+
+    func testCandidatesDropMarketingItemsWhenTechnicalOnesExist() {
+        let marketing = Article(
+            title: "Grow Your App Revenue With Better Ads",
+            url: "https://example.com/ads",
+            description: nil,
+            pubDate: Date()
+        )
+        let technical = Article(
+            title: "Swift 6 concurrency migration notes",
+            url: "https://example.com/swift6",
+            description: nil,
+            pubDate: Date(timeIntervalSinceNow: -3600)
+        )
+
+        let mixed = ArticleFilter.candidates(
+            freshArticles: [marketing, technical],
+            allArticles: [marketing, technical],
+            postedURLs: [],
+            recentlyPostedURLs: []
+        )
+        XCTAssertEqual(mixed.articles.map(\.title), ["Swift 6 concurrency migration notes"])
+
+        // Marketing-only pool is kept so a daily post is still possible.
+        let marketingOnly = ArticleFilter.candidates(
+            freshArticles: [marketing],
+            allArticles: [marketing],
+            postedURLs: [],
+            recentlyPostedURLs: []
+        )
+        XCTAssertEqual(marketingOnly.tier, .fresh)
+        XCTAssertEqual(marketingOnly.articles.map(\.title), [marketing.title])
+    }
+
     func testUniqueArticlesCollapsesInBatchDuplicatesKeepingNewest() {
         let articles = [
             Article(

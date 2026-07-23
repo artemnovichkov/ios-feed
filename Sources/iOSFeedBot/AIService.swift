@@ -120,9 +120,13 @@ final class AIService: @unchecked Sendable {
         Select only an item written in English.
 
         Instructions:
+        - This is a strictly technical channel for engineers. Select content about building software: APIs, frameworks, language features, tooling, debugging, performance, testing, or architecture.
+        - Never select marketing, ASO, growth, monetization, pricing, revenue, ads, affiliate, sponsorship, or general business/founder content, even when it is aimed at iOS developers. The same applies to career advice, hiring posts, and conference announcements.
         - Never select an item about the same library, project, or topic as a recent post above — the channel must not repeat itself.
         - Feed descriptions are written by the authors and often read like marketing. Judge by substance, not by the length of a feature list.
+        - Prefer items that go deep — code, implementation details, measurements, non-obvious gotchas — over news roundups, link digests, and opinion pieces.
         - Prefer articles and tutorials with real insight over routine package version bumps. Select a package release only if it is a major, genuinely noteworthy update.
+        - If every item is non-technical, select the one closest to hands-on engineering.
         - Return the selected item number in the selectedArticleID field.
         """
     }
@@ -150,6 +154,8 @@ final class AIService: @unchecked Sendable {
           - Write naturally and engagingly — vary the sentence structure each time.
           - Do NOT open with a template phrase like "The author introduces", "The article discusses", "This article covers", or any fixed formula. Lead with what's actually interesting: the problem solved, the technique used, the key insight, or what makes this worth reading.
           - For frameworks/libraries: focus on what it does, what problem it solves, or what changed in this release.
+          - Stay technical and factual: name the concrete APIs, types, tools, or techniques the content actually covers.
+        - This is a developer channel, not an ad. Do NOT use promotional or hype language ("unlock", "secrets", "game-changing", "must-read", "packed with insights", "supercharge", "take your app to the next level"), and do NOT end with a call to action telling the reader to read, dive in, or check it out.
         - Never use "we", "our", or first-person plural — the channel is sharing, not authoring.
         - Return hashtags in the hashtags field, including a source domain hashtag.
         - Each hashtag must contain ONLY letters and digits — no spaces, dots, hyphens, or special characters.

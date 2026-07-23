@@ -24,6 +24,8 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("2. Second Post (https://example.com/second)"))
         XCTAssertTrue(prompt.contains("Feed description: Feed summary"))
         XCTAssertTrue(prompt.contains("selectedArticleID"))
+        XCTAssertTrue(prompt.contains("strictly technical channel"))
+        XCTAssertTrue(prompt.contains("Never select marketing"))
         XCTAssertFalse(prompt.contains("already posted about these recently"))
     }
 
@@ -64,6 +66,8 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Content:\nFull page text about the implementation details."))
         XCTAssertTrue(prompt.contains("article/tutorial or an open source framework"))
         XCTAssertTrue(prompt.contains("Do NOT open with a template phrase"))
+        XCTAssertTrue(prompt.contains("developer channel, not an ad"))
+        XCTAssertTrue(prompt.contains("name the concrete APIs"))
         XCTAssertFalse(prompt.contains("Short feed description"))
     }
 

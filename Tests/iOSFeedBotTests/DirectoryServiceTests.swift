@@ -2,7 +2,7 @@ import XCTest
 @testable import iOSFeedBot
 
 final class DirectoryServiceTests: XCTestCase {
-    func testParseBlogsReturnsOnlyEnglishSourcesWithFeedURLs() throws {
+    func testParseBlogsSkipsMarketingCategoryNonEnglishAndFeedlessSources() throws {
         let json = """
         [
           {
@@ -11,6 +11,7 @@ final class DirectoryServiceTests: XCTestCase {
             "categories": [
               {
                 "title": "Development Blogs",
+                "slug": "development",
                 "sites": [
                   {
                     "title": "English Blog",
@@ -20,6 +21,17 @@ final class DirectoryServiceTests: XCTestCase {
                   {
                     "title": "English Blog Without Feed",
                     "site_url": "https://no-feed.example.com"
+                  }
+                ]
+              },
+              {
+                "title": "Marketing and Business Blogs",
+                "slug": "marketing",
+                "sites": [
+                  {
+                    "title": "Marketing Blog",
+                    "site_url": "https://marketing.example.com",
+                    "feed_url": "https://marketing.example.com/feed.xml"
                   }
                 ]
               }
