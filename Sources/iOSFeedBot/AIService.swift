@@ -121,12 +121,13 @@ final class AIService: @unchecked Sendable {
 
         Instructions:
         - This is a strictly technical channel for engineers. Select content about building software: APIs, frameworks, language features, tooling, debugging, performance, testing, or architecture.
+        - The item must be about Apple platform development (iOS, iPadOS, macOS, watchOS, tvOS, visionOS) or the Swift language and its ecosystem. The list is built from iOS blogs, but the same authors also publish about other stacks — never select an item about Elixir, Rust, Go, Android, web frontend or backend, or any other ecosystem, no matter how technically strong it is.
         - Never select marketing, ASO, growth, monetization, pricing, revenue, ads, affiliate, sponsorship, or general business/founder content, even when it is aimed at iOS developers. The same applies to career advice, hiring posts, and conference announcements.
         - Never select an item about the same library, project, or topic as a recent post above — the channel must not repeat itself.
         - Feed descriptions are written by the authors and often read like marketing. Judge by substance, not by the length of a feature list.
         - Prefer items that go deep — code, implementation details, measurements, non-obvious gotchas — over news roundups, link digests, and opinion pieces.
         - Prefer articles and tutorials with real insight over routine package version bumps. Select a package release only if it is a major, genuinely noteworthy update.
-        - If every item is non-technical, select the one closest to hands-on engineering.
+        - If every item is non-technical, select the one closest to hands-on Apple platform engineering.
         - Return the selected item number in the selectedArticleID field.
         """
     }

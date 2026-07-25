@@ -18,18 +18,48 @@ enum ArticleFilter {
         postedURLs: Set<String>,
         recentlyPostedURLs: Set<String>
     ) -> (articles: [Article], tier: CandidateTier) {
-        let fresh = technicalCandidates(uniqueArticles(freshArticles, excludingPostedURLs: postedURLs))
+        let freshPool = uniqueArticles(freshArticles, excludingPostedURLs: postedURLs)
+        let backfillPool = uniqueArticles(allArticles, excludingPostedURLs: postedURLs)
+        let repostPool = uniqueArticles(allArticles, excludingPostedURLs: recentlyPostedURLs)
+
+        let fresh = relevantCandidates(freshPool)
         if !fresh.isEmpty {
             return (fresh, .fresh)
         }
-        let backfill = technicalCandidates(uniqueArticles(allArticles, excludingPostedURLs: postedURLs))
+        let backfill = relevantCandidates(backfillPool)
         if !backfill.isEmpty {
             return (backfill, .backfill)
         }
-        return (
-            technicalCandidates(uniqueArticles(allArticles, excludingPostedURLs: recentlyPostedURLs)),
-            .repost
-        )
+        let repost = relevantCandidates(repostPool)
+        if !repost.isEmpty {
+            return (repost, .repost)
+        }
+        // Nothing Apple-related in any tier: fall back to the same tiers without the
+        // platform filter, so a daily post is still possible.
+        if !freshPool.isEmpty {
+            return (technicalCandidates(freshPool), .fresh)
+        }
+        if !backfillPool.isEmpty {
+            return (technicalCandidates(backfillPool), .backfill)
+        }
+        return (technicalCandidates(repostPool), .repost)
+    }
+
+    private static func relevantCandidates(_ articles: [Article]) -> [Article] {
+        technicalCandidates(platformCandidates(articles))
+    }
+
+    /// Drops content unrelated to Apple platforms. Unlike `technicalCandidates` this is a hard
+    /// filter that may return an empty pool: feeds come from iOS blogs, but their authors also
+    /// publish about other ecosystems, and an off-topic post is worse than an older on-topic one.
+    /// `candidates` falls through to the next tier instead.
+    static func platformCandidates(_ articles: [Article]) -> [Article] {
+        articles.filter { isPlatformRelevant(title: $0.title, description: $0.description) }
+    }
+
+    /// True when the item mentions an Apple platform, framework, or the Swift ecosystem.
+    static func isPlatformRelevant(title: String, description: String?) -> Bool {
+        keywordMatcher(title: title, description: description)(platformKeywords)
     }
 
     /// Drops marketing/business items from a candidate pool, but never empties it:
@@ -43,6 +73,13 @@ enum ArticleFilter {
     /// A technical keyword anywhere cancels the match, so posts like
     /// "Building a paywall with StoreKit 2" stay in the pool.
     static func isMarketingContent(title: String, description: String?) -> Bool {
+        let matches = keywordMatcher(title: title, description: description)
+        return matches(marketingKeywords) && !matches(technicalKeywords)
+    }
+
+    /// Tokenizes title and description once and returns a keyword lookup over them.
+    /// Single words match whole tokens; keywords with spaces match as a phrase.
+    private static func keywordMatcher(title: String, description: String?) -> ([String]) -> Bool {
         let text = [title, description ?? ""].joined(separator: " ")
         let tokens = text
             .lowercased()
@@ -51,14 +88,23 @@ enum ArticleFilter {
         let normalized = " " + tokens.joined(separator: " ") + " "
         let tokenSet = Set(tokens)
 
-        func matches(_ keywords: [String]) -> Bool {
+        return { keywords in
             keywords.contains { keyword in
                 keyword.contains(" ") ? normalized.contains(" \(keyword) ") : tokenSet.contains(keyword)
             }
         }
-
-        return matches(marketingKeywords) && !matches(technicalKeywords)
     }
+
+    private static let platformKeywords = [
+        "ios", "ipados", "macos", "watchos", "tvos", "visionos", "apple", "iphone", "ipad",
+        "mac", "macbook", "apple watch", "vision pro", "app store", "appstore", "testflight",
+        "xcode", "wwdc", "swift", "swiftui", "uikit", "appkit", "objc", "objective c",
+        "cocoa", "cocoapods", "carthage", "spm", "swiftpm", "swiftdata", "coredata",
+        "core data", "storekit", "widgetkit", "arkit", "realitykit", "avfoundation",
+        "cloudkit", "healthkit", "mapkit", "homekit", "watchkit", "sirikit", "coreml",
+        "core ml", "combine", "xctest", "xcframework", "instruments", "simulator",
+        "foundation", "uiview", "uiviewcontroller", "viewcontroller", "sendable"
+    ]
 
     private static let marketingKeywords = [
         "marketing", "marketer", "aso", "app store optimization", "user acquisition",

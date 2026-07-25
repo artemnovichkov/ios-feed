@@ -146,6 +146,71 @@ final class ArticleFilterTests: XCTestCase {
         XCTAssertEqual(marketingOnly.articles.map(\.title), [marketing.title])
     }
 
+    func testPlatformRelevanceDetection() {
+        XCTAssertFalse(
+            ArticleFilter.isPlatformRelevant(
+                title: "Shimming Your Way Off a Dead Elixir Dependency",
+                description: "Replacing an abandoned Timex dependency with a temporary shim module."
+            )
+        )
+        XCTAssertTrue(
+            ArticleFilter.isPlatformRelevant(
+                title: "Blend modes in SwiftUI",
+                description: nil
+            )
+        )
+        XCTAssertTrue(
+            ArticleFilter.isPlatformRelevant(
+                title: "Shimming Your Way Off a Dead Dependency",
+                description: "How the shim keeps an old API alive while migrating a macOS app."
+            )
+        )
+    }
+
+    func testCandidatesPreferOlderAppleContentOverFreshOffTopicItem() {
+        let offTopic = Article(
+            title: "Shimming Your Way Off a Dead Elixir Dependency",
+            url: "https://example.com/elixir",
+            description: nil,
+            pubDate: Date()
+        )
+        let olderApple = Article(
+            title: "Understanding actor reentrancy in Swift",
+            url: "https://example.com/actors",
+            description: nil,
+            pubDate: Date(timeIntervalSinceNow: -48 * 60 * 60)
+        )
+
+        let result = ArticleFilter.candidates(
+            freshArticles: [offTopic],
+            allArticles: [offTopic, olderApple],
+            postedURLs: [],
+            recentlyPostedURLs: []
+        )
+
+        XCTAssertEqual(result.tier, .backfill)
+        XCTAssertEqual(result.articles.map(\.title), ["Understanding actor reentrancy in Swift"])
+    }
+
+    func testCandidatesKeepOffTopicPoolWhenNothingAppleRelatedExists() {
+        let offTopic = Article(
+            title: "Shimming Your Way Off a Dead Elixir Dependency",
+            url: "https://example.com/elixir",
+            description: nil,
+            pubDate: Date()
+        )
+
+        let result = ArticleFilter.candidates(
+            freshArticles: [offTopic],
+            allArticles: [offTopic],
+            postedURLs: [],
+            recentlyPostedURLs: []
+        )
+
+        XCTAssertEqual(result.tier, .fresh)
+        XCTAssertEqual(result.articles.map(\.title), [offTopic.title])
+    }
+
     func testUniqueArticlesCollapsesInBatchDuplicatesKeepingNewest() {
         let articles = [
             Article(
