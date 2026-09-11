@@ -157,6 +157,27 @@ enum ArticleFilter {
         return host + path
     }
 
+    /// Stable key of the blog an article belongs to: host without "www.".
+    /// Shared hosts (Medium, dev.to) keep the first path segment, so different authors stay distinct.
+    static func sourceKey(_ urlString: String) -> String {
+        let normalized = normalizeURL(urlString)
+        let segments = normalized.split(separator: "/", omittingEmptySubsequences: true)
+        guard let host = segments.first else { return normalized }
+        if sharedHosts.contains(String(host)), segments.count > 1 {
+            return "\(host)/\(segments[1])"
+        }
+        return String(host)
+    }
+
+    private static let sharedHosts: Set<String> = ["medium.com", "dev.to"]
+
+    /// Drops articles from recently posted blogs so the channel doesn't feature one source
+    /// several days in a row, but never empties the pool.
+    static func diverseCandidates(_ articles: [Article], excludingSources sources: Set<String>) -> [Article] {
+        let diverse = articles.filter { !sources.contains(sourceKey($0.url)) }
+        return diverse.isEmpty ? articles : diverse
+    }
+
     /// Drops articles that were already posted and collapses in-batch duplicates
     /// (e.g. several releases of the same package in one day), keeping the newest item.
     static func uniqueArticles(_ articles: [Article], excludingPostedURLs postedURLs: Set<String>) -> [Article] {

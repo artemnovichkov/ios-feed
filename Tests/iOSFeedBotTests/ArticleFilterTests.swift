@@ -231,4 +231,31 @@ final class ArticleFilterTests: XCTestCase {
 
         XCTAssertEqual(result.map(\.title), ["SomePackage - 5.8.9"])
     }
+
+    func testSourceKeyUsesHostAndKeepsAuthorOnSharedHosts() {
+        XCTAssertEqual(ArticleFilter.sourceKey("https://www.sarunw.com/posts/swiftui-webview/?utm_source=telegram"), "sarunw.com")
+        XCTAssertEqual(ArticleFilter.sourceKey("https://medium.com/@author/some-post-123"), "medium.com/@author")
+        XCTAssertEqual(ArticleFilter.sourceKey("https://dev.to/someone/post"), "dev.to/someone")
+    }
+
+    func testDiverseCandidatesExcludesRecentlyPostedSources() {
+        let articles = [
+            Article(title: "Same Blog", url: "https://sarunw.com/posts/new", description: nil, pubDate: Date()),
+            Article(title: "Other Blog", url: "https://example.com/post", description: nil, pubDate: Date())
+        ]
+
+        let result = ArticleFilter.diverseCandidates(articles, excludingSources: ["sarunw.com"])
+
+        XCTAssertEqual(result.map(\.title), ["Other Blog"])
+    }
+
+    func testDiverseCandidatesKeepsPoolWhenAllSourcesWereRecentlyPosted() {
+        let articles = [
+            Article(title: "Same Blog", url: "https://sarunw.com/posts/new", description: nil, pubDate: Date())
+        ]
+
+        let result = ArticleFilter.diverseCandidates(articles, excludingSources: ["sarunw.com"])
+
+        XCTAssertEqual(result.map(\.title), ["Same Blog"])
+    }
 }

@@ -64,6 +64,51 @@ func measure<T>(
     }
 }
 
+func publish(
+    method: String,
+    article: Article,
+    telegramService: TelegramService,
+    metricsStore: SQLiteMetricsStore?,
+    runID: Int64?,
+    send: () async throws -> Int?
+) async throws {
+    do {
+        let messageID = try await measure("telegram_publish", metricsStore: metricsStore, runID: runID, operation: send)
+        if let metricsStore, let runID {
+            try? metricsStore.recordTelegramPost(
+                runID: runID,
+                messageID: messageID,
+                method: method,
+                articleURL: article.url,
+                title: article.title,
+                status: "success"
+            )
+        }
+        if let messageID {
+            let subscriberCount = try? await telegramService.getChatMemberCount()
+            try? metricsStore?.recordEngagement(
+                messageID: messageID,
+                subscriberCount: subscriberCount,
+                reactionCount: nil,
+                detailsJSON: nil
+            )
+        }
+    } catch {
+        if let metricsStore, let runID {
+            try? metricsStore.recordTelegramPost(
+                runID: runID,
+                messageID: nil,
+                method: method,
+                articleURL: article.url,
+                title: article.title,
+                status: "failure",
+                errorMessage: String(describing: error)
+            )
+        }
+        throw error
+    }
+}
+
 let runStartedAt = Date()
 var metricsStore: SQLiteMetricsStore?
 var runID: Int64?
@@ -153,7 +198,7 @@ do {
             .map(ArticleFilter.normalizeURL)
     )
 
-    let (candidates, tier) = ArticleFilter.candidates(
+    let (tierCandidates, tier) = ArticleFilter.candidates(
         freshArticles: freshArticles,
         allArticles: articles,
         postedURLs: postedURLs,
@@ -161,12 +206,22 @@ do {
     )
     switch tier {
     case .fresh:
-        print("\(candidates.count) unique candidates from the last 24h.")
+        print("\(tierCandidates.count) unique candidates from the last 24h.")
     case .backfill:
-        print("Nothing unposted in the last 24h — falling back to the 72h window (\(candidates.count) candidates).")
+        print("Nothing unposted in the last 24h — falling back to the 72h window (\(tierCandidates.count) candidates).")
     case .repost:
-        print("Nothing unposted in the last 72h — allowing reposts older than 30 days (\(candidates.count) candidates).")
+        print("Nothing unposted in the last 72h — allowing reposts older than 30 days (\(tierCandidates.count) candidates).")
     }
+
+    let sourceCooldown = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+    let recentSources = Set(
+        postHistory
+            .filter { $0.postedAt > sourceCooldown }
+            .compactMap { $0.articleURL }
+            .map(ArticleFilter.sourceKey)
+    )
+    let candidates = ArticleFilter.diverseCandidates(tierCandidates, excludingSources: recentSources)
+    print("\(candidates.count) candidates after excluding blogs posted in the last 7 days.")
 
     if candidates.isEmpty {
         print("No new unique articles found.")
@@ -247,80 +302,20 @@ do {
     if let ogImageURL = ogImageURL {
         print("Publishing to Telegram with image...")
         do {
-            let messageID = try await measure("telegram_publish", metricsStore: metricsStore, runID: runID) {
+            try await publish(method: "sendPhoto", article: selectedArticle, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
                 try await telegramService.sendPhoto(url: ogImageURL, caption: formattedPost)
             }
-            if let metricsStore, let runID {
-                try? metricsStore.recordTelegramPost(
-                    runID: runID,
-                    messageID: messageID,
-                    method: "sendPhoto",
-                    articleURL: selectedArticle.url,
-                    title: selectedArticle.title,
-                    status: "success"
-                )
-            }
-            if let messageID {
-                let subscriberCount = try? await telegramService.getChatMemberCount()
-                try? metricsStore?.recordEngagement(
-                    messageID: messageID,
-                    subscriberCount: subscriberCount,
-                    reactionCount: nil,
-                    detailsJSON: nil
-                )
-            }
         } catch {
-            if let metricsStore, let runID {
-                try? metricsStore.recordTelegramPost(
-                    runID: runID,
-                    messageID: nil,
-                    method: "sendPhoto",
-                    articleURL: selectedArticle.url,
-                    title: selectedArticle.title,
-                    status: "failure",
-                    errorMessage: String(describing: error)
-                )
+            // Telegram fetches the image itself and fails on blocked or broken URLs: post without it.
+            print("Publishing with image failed (\(error)) — retrying without image...")
+            try await publish(method: "sendMessage", article: selectedArticle, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
+                try await telegramService.sendMessage(formattedPost)
             }
-            throw error
         }
     } else {
         print("Publishing to Telegram (no image found)...")
-        do {
-            let messageID = try await measure("telegram_publish", metricsStore: metricsStore, runID: runID) {
-                try await telegramService.sendMessage(formattedPost)
-            }
-            if let metricsStore, let runID {
-                try? metricsStore.recordTelegramPost(
-                    runID: runID,
-                    messageID: messageID,
-                    method: "sendMessage",
-                    articleURL: selectedArticle.url,
-                    title: selectedArticle.title,
-                    status: "success"
-                )
-            }
-            if let messageID {
-                let subscriberCount = try? await telegramService.getChatMemberCount()
-                try? metricsStore?.recordEngagement(
-                    messageID: messageID,
-                    subscriberCount: subscriberCount,
-                    reactionCount: nil,
-                    detailsJSON: nil
-                )
-            }
-        } catch {
-            if let metricsStore, let runID {
-                try? metricsStore.recordTelegramPost(
-                    runID: runID,
-                    messageID: nil,
-                    method: "sendMessage",
-                    articleURL: selectedArticle.url,
-                    title: selectedArticle.title,
-                    status: "failure",
-                    errorMessage: String(describing: error)
-                )
-            }
-            throw error
+        try await publish(method: "sendMessage", article: selectedArticle, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
+            try await telegramService.sendMessage(formattedPost)
         }
     }
 
