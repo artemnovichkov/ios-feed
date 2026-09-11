@@ -63,4 +63,35 @@ final class DirectoryServiceTests: XCTestCase {
         XCTAssertEqual(blogs.first?.siteUrl, "https://example.com")
         XCTAssertEqual(blogs.first?.feedUrl, "https://example.com/feed.xml")
     }
+
+    func testParseBlogsSkipsExcludedFeedsAndMergeAddsOnlyNewFeeds() throws {
+        let json = """
+        [
+          {
+            "language": "en",
+            "categories": [
+              {
+                "slug": "updates",
+                "sites": [
+                  { "title": "Apple News", "site_url": "https://developer.apple.com/news/", "feed_url": "https://developer.apple.com/news/rss/news.rss" },
+                  { "title": "Commits", "site_url": "https://example.com", "feed_url": "https://example.com/commits.atom" }
+                ]
+              }
+            ]
+          }
+        ]
+        """
+
+        let blogs = try DirectoryService.parseBlogs(
+            from: Data(json.utf8),
+            excludingFeedUrls: ["https://example.com/commits.atom"]
+        )
+        XCTAssertEqual(blogs.map(\.title), ["Apple News"])
+
+        let merged = DirectoryService.merge(blogs, with: [
+            Blog(title: "Duplicate", siteUrl: "https://developer.apple.com/news/", feedUrl: "https://developer.apple.com/news/rss/news.rss"),
+            Blog(title: "Forum", siteUrl: "https://forums.swift.org", feedUrl: "https://forums.swift.org/c/evolution/announce/12.rss")
+        ])
+        XCTAssertEqual(merged.map(\.title), ["Apple News", "Forum"])
+    }
 }

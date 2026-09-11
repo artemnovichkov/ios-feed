@@ -94,7 +94,8 @@ final class AIService: @unchecked Sendable {
 
     static func buildSelectionPrompt(articles: [Article], recentPostTitles: [String] = []) -> String {
         let articleList = articles.enumerated().map { index, article in
-            var text = "\(index + 1). \(article.title) (\(article.url))"
+            let marker = ArticleFilter.isOfficial(article.url) ? "[Official] " : ""
+            var text = "\(index + 1). \(marker)\(article.title) (\(article.url))"
             if let description = article.description, !description.isEmpty {
                 text += "\n   Feed description: \(description)"
             }
@@ -127,6 +128,7 @@ final class AIService: @unchecked Sendable {
         - Feed descriptions are written by the authors and often read like marketing. Judge by substance, not by the length of a feature list.
         - Prefer items that go deep — code, implementation details, measurements, non-obvious gotchas — over news roundups, link digests, and opinion pieces.
         - Prefer articles and tutorials with real insight over routine package version bumps. Select a package release only if it is a major, genuinely noteworthy update.
+        - Items marked [Official] come from Apple or the Swift project. Prefer one over community articles when it is substantive for engineers: a Swift Evolution proposal in review or accepted, a new or changed API, a new documentation article or sample code, a platform requirement or deprecation developers must act on. Do not prefer bare release entries (beta/RC build numbers, "App Store Connect Update") or event and promo announcements.
         - If every item is non-technical, select the one closest to hands-on Apple platform engineering.
         - Return the selected item number in the selectedArticleID field.
         """
@@ -149,12 +151,13 @@ final class AIService: @unchecked Sendable {
         \(articleContent)
 
         Instructions:
-        - Determine whether this is an article/tutorial or an open source framework/library release.
+        - Determine whether this is an article/tutorial, an open source framework/library release, an official Apple announcement, or a Swift Evolution proposal.
         - Return the title in the title field.
         - Return a short summary (2-3 sentences) in the summary field:
           - Write naturally and engagingly — vary the sentence structure each time.
           - Do NOT open with a template phrase like "The author introduces", "The article discusses", "This article covers", or any fixed formula. Lead with what's actually interesting: the problem solved, the technique used, the key insight, or what makes this worth reading.
           - For frameworks/libraries: focus on what it does, what problem it solves, or what changed in this release.
+          - For Swift Evolution proposals: explain what the proposal changes in the language or library, and mention its status (in review until a date, accepted, accepted with modifications).
           - Stay technical and factual: name the concrete APIs, types, tools, or techniques the content actually covers.
         - This is a developer channel, not an ad. Do NOT use promotional or hype language ("unlock", "secrets", "game-changing", "must-read", "packed with insights", "supercharge", "take your app to the next level"), and do NOT end with a call to action telling the reader to read, dive in, or check it out.
         - Never use "we", "our", or first-person plural — the channel is sharing, not authoring.

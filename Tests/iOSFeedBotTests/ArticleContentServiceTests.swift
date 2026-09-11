@@ -44,4 +44,21 @@ final class ArticleContentServiceTests: XCTestCase {
 
         XCTAssertEqual(text, "Swift's type system uses @MainActor for UI isolation.")
     }
+
+    func testProposalRawURLFindsLinkedSwiftEvolutionProposal() {
+        let html = """
+        <p>The review of <a href="https://github.com/swiftlang/swift-evolution/blob/main/proposals/0548-resign-remote-id.md">SE-0548</a> begins now.</p>
+        <a href="https://github.com/swiftlang/swift-evolution/blob/main/process.md">process</a>
+        """
+
+        XCTAssertEqual(
+            ArticleContentService.proposalRawURL(in: html),
+            "https://raw.githubusercontent.com/swiftlang/swift-evolution/main/proposals/0548-resign-remote-id.md"
+        )
+        XCTAssertEqual(
+            ArticleContentService.proposalRawURL(in: "<a href=\"https://github.com/swiftlang/swift-evolution/blob/main/proposals/testing/0029-add-issue-metadata.md\">ST-0029</a>"),
+            "https://raw.githubusercontent.com/swiftlang/swift-evolution/main/proposals/testing/0029-add-issue-metadata.md"
+        )
+        XCTAssertNil(ArticleContentService.proposalRawURL(in: "<p>No proposal here</p>"))
+    }
 }

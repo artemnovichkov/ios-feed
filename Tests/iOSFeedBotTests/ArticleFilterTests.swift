@@ -258,4 +258,20 @@ final class ArticleFilterTests: XCTestCase {
 
         XCTAssertEqual(result.map(\.title), ["Same Blog"])
     }
+
+    func testNormalizeURLKeepsAppleDeveloperNewsID() {
+        let first = ArticleFilter.normalizeURL("https://developer.apple.com/news/?id=vn8abkxx")
+        let second = ArticleFilter.normalizeURL("https://developer.apple.com/news/?id=k1mtkt1k&utm_source=telegram")
+
+        XCTAssertEqual(first, "developer.apple.com/news?id=vn8abkxx")
+        XCTAssertEqual(second, "developer.apple.com/news?id=k1mtkt1k")
+        XCTAssertEqual(ArticleFilter.normalizeURL("https://developer.apple.com/news/"), "developer.apple.com/news")
+    }
+
+    func testIsOfficialMatchesAppleAndSwiftHosts() {
+        XCTAssertTrue(ArticleFilter.isOfficial("https://developer.apple.com/news/?id=vn8abkxx"))
+        XCTAssertTrue(ArticleFilter.isOfficial("https://www.swift.org/blog/swift-6/"))
+        XCTAssertTrue(ArticleFilter.isOfficial("https://forums.swift.org/t/se-0548-resignremoteid/89365"))
+        XCTAssertFalse(ArticleFilter.isOfficial("https://sarunw.com/posts/swift/"))
+    }
 }

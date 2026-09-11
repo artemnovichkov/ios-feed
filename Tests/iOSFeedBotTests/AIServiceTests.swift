@@ -64,7 +64,8 @@ final class AIServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(prompt.contains("Content:\nFull page text about the implementation details."))
-        XCTAssertTrue(prompt.contains("article/tutorial or an open source framework"))
+        XCTAssertTrue(prompt.contains("article/tutorial, an open source framework"))
+        XCTAssertTrue(prompt.contains("For Swift Evolution proposals"))
         XCTAssertTrue(prompt.contains("Do NOT open with a template phrase"))
         XCTAssertTrue(prompt.contains("developer channel, not an ad"))
         XCTAssertTrue(prompt.contains("name the concrete APIs"))
@@ -132,5 +133,17 @@ final class AIServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(post, "Title\n\nSummary.\n\n#SwiftUI #iosdev #valid")
+    }
+
+    func testSelectionPromptMarksOfficialItems() {
+        let articles = [
+            Article(title: "SE-0548: resignRemoteID", url: "https://forums.swift.org/t/se-0548/89365", description: nil, pubDate: Date()),
+            Article(title: "Community Post", url: "https://example.com/post", description: nil, pubDate: Date())
+        ]
+
+        let prompt = AIService.buildSelectionPrompt(articles: articles)
+
+        XCTAssertTrue(prompt.contains("1. [Official] SE-0548: resignRemoteID (https://forums.swift.org/t/se-0548/89365)"))
+        XCTAssertTrue(prompt.contains("2. Community Post (https://example.com/post)"))
     }
 }

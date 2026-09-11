@@ -23,13 +23,14 @@ final class DirectoryService: Sendable {
             throw DirectoryError.invalidResponse
         }
         
-        return try Self.parseBlogs(from: data)
+        return Self.merge(try Self.parseBlogs(from: data), with: Config.additionalBlogs)
     }
 
     static func parseBlogs(
         from data: Data,
         languageCode: String = "en",
-        excludingCategorySlugs excludedSlugs: Set<String> = excludedCategorySlugs
+        excludingCategorySlugs excludedSlugs: Set<String> = excludedCategorySlugs,
+        excludingFeedUrls excludedFeedUrls: Set<String> = Config.excludedFeedUrls
     ) throws -> [Blog] {
         let languages = try JSONDecoder().decode([DirectoryLanguage].self, from: data)
         return languages
@@ -37,7 +38,16 @@ final class DirectoryService: Sendable {
             .flatMap { $0.categories }
             .filter { !excludedSlugs.contains($0.slug ?? "") }
             .flatMap { $0.sites }
-            .filter { $0.feedUrl != nil }
+            .filter { blog in
+                guard let feedUrl = blog.feedUrl else { return false }
+                return !excludedFeedUrls.contains(feedUrl)
+            }
+    }
+
+    /// Appends additional blogs, skipping feeds the directory already lists.
+    static func merge(_ blogs: [Blog], with additionalBlogs: [Blog]) -> [Blog] {
+        let knownFeeds = Set(blogs.compactMap(\.feedUrl))
+        return blogs + additionalBlogs.filter { !knownFeeds.contains($0.feedUrl ?? "") }
     }
 }
 

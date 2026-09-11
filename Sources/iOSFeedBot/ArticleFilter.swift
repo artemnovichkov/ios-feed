@@ -154,8 +154,21 @@ enum ArticleFilter {
             path.removeLast()
         }
 
+        // Apple Developer news items differ only by the `id` query item.
+        if host == "developer.apple.com",
+           let id = components.queryItems?.first(where: { $0.name == "id" })?.value {
+            return host + path + "?id=" + id.lowercased()
+        }
+
         return host + path
     }
+
+    /// True for items published by Apple or the Swift project.
+    static func isOfficial(_ urlString: String) -> Bool {
+        officialHosts.contains(sourceKey(urlString))
+    }
+
+    private static let officialHosts: Set<String> = ["developer.apple.com", "swift.org", "forums.swift.org"]
 
     /// Stable key of the blog an article belongs to: host without "www.".
     /// Shared hosts (Medium, dev.to) keep the first path segment, so different authors stay distinct.
