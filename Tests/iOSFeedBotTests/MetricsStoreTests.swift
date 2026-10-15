@@ -30,6 +30,7 @@ final class MetricsStoreTests: XCTestCase {
             method: "sendMessage",
             articleURL: "https://example.com/article",
             title: "Article",
+            hashtags: ["SwiftUI", "Animation"],
             postedAt: Date(timeIntervalSince1970: 1_020),
             status: "success"
         )
@@ -58,6 +59,29 @@ final class MetricsStoreTests: XCTestCase {
         XCTAssertEqual(summary.latestPost?.messageID, 42)
         XCTAssertEqual(summary.latestEngagement?.subscriberCount, 1234)
         XCTAssertEqual(try store.performance().first?.stepName, "telegram_publish")
+        XCTAssertEqual(summary.latestPost?.hashtags, ["SwiftUI", "Animation"])
+    }
+
+    func testStorePersistsCandidateScores() throws {
+        let store = try SQLiteMetricsStore(path: temporaryDatabasePath())
+        let runID = try store.startRun()
+        try store.recordCandidateScores(runID: runID, scores: [
+            CandidateScore(url: "https://a.com", title: "A", depth: 5, novelty: 4, usefulness: 3, selected: true),
+            CandidateScore(url: "https://b.com", title: "B", depth: 1, novelty: 2, usefulness: 1, selected: false)
+        ])
+
+        let scores = try store.candidateScores(runID: runID)
+        XCTAssertEqual(scores.map(\.url), ["https://a.com", "https://b.com"])
+        XCTAssertEqual(scores.first?.total, 12)
+        XCTAssertEqual(scores.map(\.selected), [true, false])
+    }
+
+    func testPostsWithoutHashtagsReadAsEmpty() throws {
+        let store = try SQLiteMetricsStore(path: temporaryDatabasePath())
+        let runID = try store.startRun()
+        try store.recordTelegramPost(runID: runID, messageID: 1, method: "sendMessage", articleURL: nil, title: "Old", status: "success")
+
+        XCTAssertEqual(try store.telegramPosts().first?.hashtags, [])
     }
 
     private func temporaryDatabasePath() -> String {

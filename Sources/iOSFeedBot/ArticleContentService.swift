@@ -3,9 +3,61 @@ import Foundation
 import FoundationNetworking
 #endif
 
+/// Cheap signals about an article's body, so selection can judge substance instead of the feed blurb.
+struct ArticlePreview: Sendable, Equatable {
+    let wordCount: Int
+    let codeBlockCount: Int
+    let excerpt: String
+}
+
 struct ArticleContentService {
     /// Forum text kept ahead of an attached proposal, so the proposal fits the prompt limit.
     private static let maxForumCharacters = 3_000
+    private static let maxExcerptCharacters = 300
+    /// Bounds the selection prompt and the number of page fetches per run.
+    static let maxPreviews = 40
+
+    /// Previews keyed by article URL; pages that fail to load are left out.
+    func fetchPreviews(for articles: [Article]) async -> [String: ArticlePreview] {
+        await withTaskGroup(of: (String, ArticlePreview?).self) { group in
+            for article in articles.prefix(Self.maxPreviews) {
+                group.addTask {
+                    guard let html = await fetchString(from: article.url) else { return (article.url, nil) }
+                    return (article.url, Self.preview(fromHTML: html))
+                }
+            }
+            var previews: [String: ArticlePreview] = [:]
+            for await (url, preview) in group {
+                previews[url] = preview
+            }
+            return previews
+        }
+    }
+
+    static func preview(fromHTML html: String) -> ArticlePreview? {
+        let body = mainHTML(in: html)
+        let text = extractReadableText(from: body)
+        guard !text.isEmpty else { return nil }
+        let codeBlockCount = body.ranges(of: /(?i)<pre\b/).count
+        let wordCount = text.split(whereSeparator: \.isWhitespace).count
+        let excerpt = text.replacingOccurrences(of: "\n", with: " ").prefix(maxExcerptCharacters)
+        return ArticlePreview(wordCount: wordCount, codeBlockCount: codeBlockCount, excerpt: String(excerpt))
+    }
+
+    /// The `<article>` (or `<main>`) region, so sidebars, comments and related-post lists don't
+    /// inflate the counts. Falls back to the whole page when the region is missing or nearly empty.
+    static func mainHTML(in html: String) -> String {
+        for tag in ["article", "main"] {
+            guard let open = html.range(of: "<\(tag)\\b[^>]*>", options: [.regularExpression, .caseInsensitive]),
+                  let close = html.range(of: "</\(tag)>", options: [.caseInsensitive, .backwards]),
+                  open.upperBound < close.lowerBound else { continue }
+            let region = String(html[open.upperBound..<close.lowerBound])
+            if extractReadableText(from: region).count >= 300 {
+                return region
+            }
+        }
+        return html
+    }
 
     func fetchContent(for urlString: String) async -> String? {
         guard let html = await fetchString(from: urlString) else { return nil }

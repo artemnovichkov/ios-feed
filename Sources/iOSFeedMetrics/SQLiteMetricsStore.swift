@@ -130,6 +130,7 @@ public final class SQLiteMetricsStore: @unchecked Sendable {
         method: String,
         articleURL: String?,
         title: String?,
+        hashtags: [String] = [],
         postedAt: Date = Date(),
         status: String,
         errorMessage: String? = nil
@@ -138,16 +139,60 @@ public final class SQLiteMetricsStore: @unchecked Sendable {
             try execute(
                 """
                 INSERT INTO telegram_posts (
-                    run_id, message_id, method, article_url, title, posted_at, status, error_message
+                    run_id, message_id, method, article_url, title, hashtags, posted_at, status, error_message
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     .int64(runID), .optionalInt(messageID), .text(method),
                     .optionalText(articleURL), .optionalText(title),
+                    .optionalText(hashtags.isEmpty ? nil : hashtags.joined(separator: " ")),
                     .double(postedAt.timeIntervalSince1970), .text(status), .optionalText(errorMessage)
                 ]
             )
+        }
+    }
+
+    public func recordCandidateScores(runID: Int64, scores: [CandidateScore]) throws {
+        try queue.sync {
+            for score in scores {
+                try execute(
+                    """
+                    INSERT INTO candidate_scores (
+                        run_id, url, title, depth, novelty, usefulness, selected
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        .int64(runID), .text(score.url), .text(score.title),
+                        .int(score.depth), .int(score.novelty), .int(score.usefulness),
+                        .int(score.selected ? 1 : 0)
+                    ]
+                )
+            }
+        }
+    }
+
+    public func candidateScores(runID: Int64) throws -> [CandidateScore] {
+        try queue.sync {
+            try all(
+                """
+                SELECT url, title, depth, novelty, usefulness, selected
+                FROM candidate_scores
+                WHERE run_id = ?
+                ORDER BY id
+                """,
+                [.int64(runID)]
+            ) { statement in
+                CandidateScore(
+                    url: stringColumn(statement, 0) ?? "",
+                    title: stringColumn(statement, 1) ?? "",
+                    depth: intColumn(statement, 2),
+                    novelty: intColumn(statement, 3),
+                    usefulness: intColumn(statement, 4),
+                    selected: intColumn(statement, 5) != 0
+                )
+            }
         }
     }
 
@@ -365,6 +410,23 @@ public final class SQLiteMetricsStore: @unchecked Sendable {
                 )
                 """
             )
+            // Added after the table shipped; fails harmlessly once the column exists.
+            try? execute("ALTER TABLE telegram_posts ADD COLUMN hashtags TEXT")
+            try execute(
+                """
+                CREATE TABLE IF NOT EXISTS candidate_scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL,
+                    url TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    depth INTEGER NOT NULL,
+                    novelty INTEGER NOT NULL,
+                    usefulness INTEGER NOT NULL,
+                    selected INTEGER NOT NULL,
+                    FOREIGN KEY(run_id) REFERENCES runs(id)
+                )
+                """
+            )
             try execute(
                 """
                 CREATE TABLE IF NOT EXISTS state (
@@ -430,7 +492,7 @@ public final class SQLiteMetricsStore: @unchecked Sendable {
     private func fetchTelegramPosts(limit: Int) throws -> [TelegramPostRecord] {
         try all(
             """
-            SELECT message_id, method, article_url, title, posted_at, status, error_message
+            SELECT message_id, method, article_url, title, posted_at, status, error_message, hashtags
             FROM telegram_posts
             ORDER BY posted_at DESC
             LIMIT ?
@@ -442,6 +504,7 @@ public final class SQLiteMetricsStore: @unchecked Sendable {
                 method: stringColumn(statement, 1) ?? "",
                 articleURL: stringColumn(statement, 2),
                 title: stringColumn(statement, 3),
+                hashtags: (stringColumn(statement, 7) ?? "").split(separator: " ").map(String.init),
                 postedAt: dateColumn(statement, 4) ?? Date(timeIntervalSince1970: 0),
                 status: stringColumn(statement, 5) ?? "",
                 errorMessage: stringColumn(statement, 6)

@@ -65,9 +65,32 @@ public struct TelegramPostRecord: Codable, Sendable {
     public let method: String
     public let articleURL: String?
     public let title: String?
+    /// Topic hashtags without "#", most relevant first. Empty for posts recorded before they were stored.
+    public let hashtags: [String]
     public let postedAt: Date
     public let status: String
     public let errorMessage: String?
+}
+
+/// Model's rating of one selection candidate, kept to tune selection against engagement later.
+public struct CandidateScore: Codable, Sendable {
+    public let url: String
+    public let title: String
+    public let depth: Int
+    public let novelty: Int
+    public let usefulness: Int
+    public let selected: Bool
+
+    public init(url: String, title: String, depth: Int, novelty: Int, usefulness: Int, selected: Bool) {
+        self.url = url
+        self.title = title
+        self.depth = depth
+        self.novelty = novelty
+        self.usefulness = usefulness
+        self.selected = selected
+    }
+
+    public var total: Int { depth + novelty + usefulness }
 }
 
 public struct EngagementRecord: Codable, Sendable {

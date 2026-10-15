@@ -61,4 +61,26 @@ final class ArticleContentServiceTests: XCTestCase {
         )
         XCTAssertNil(ArticleContentService.proposalRawURL(in: "<p>No proposal here</p>"))
     }
+
+    func testPreviewCountsWordsAndCodeBlocksInsideArticle() throws {
+        let body = String(repeating: "word ", count: 80)
+        let html = """
+        <html><body>
+        <aside><pre>sidebar code</pre> lots of sidebar text</aside>
+        <article class="post"><p>Opening line. \(body)</p><pre><code>let a = 1</code></pre><PRE>b</PRE></article>
+        </body></html>
+        """
+
+        let preview = try XCTUnwrap(ArticleContentService.preview(fromHTML: html))
+
+        XCTAssertEqual(preview.codeBlockCount, 2)
+        XCTAssertEqual(preview.wordCount, 87)
+        XCTAssertTrue(preview.excerpt.hasPrefix("Opening line."))
+    }
+
+    func testMainHTMLFallsBackToWholePageWhenArticleIsNearlyEmpty() {
+        let html = "<article>tiny</article><div>\(String(repeating: "text ", count: 100))</div>"
+
+        XCTAssertEqual(ArticleContentService.mainHTML(in: html), html)
+    }
 }

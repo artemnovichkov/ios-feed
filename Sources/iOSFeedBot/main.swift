@@ -41,10 +41,16 @@ func formatTelegramPost(_ post: String, url: String) -> String {
 
 /// Runs selection and generation for each model on the same candidate pool and prints
 /// the results. Nothing is posted and no metrics are recorded.
-func runDryRun(models: [String], candidates: [Article], recentPostTitles: [String]) async {
+func runDryRun(
+    models: [String],
+    candidates: [Article],
+    recentPosts: [RecentPost],
+    previews: [String: ArticlePreview]
+) async {
     print("\nCandidates (\(candidates.count)):")
     for (index, article) in candidates.enumerated() {
-        print("\(index + 1). \(article.title) — \(article.url)")
+        let body = previews[article.url].map { " [\($0.wordCount)w, \($0.codeBlockCount) code]" } ?? ""
+        print("\(index + 1). \(article.title)\(body) — \(article.url)")
     }
 
     let articleContentService = ArticleContentService()
@@ -54,7 +60,12 @@ func runDryRun(models: [String], candidates: [Article], recentPostTitles: [Strin
         let aiService = AIService(model: model)
         let startedAt = Date()
         do {
-            let article = try await aiService.selectArticle(from: candidates, recentPostTitles: recentPostTitles)
+            let choice = try await aiService.selectArticle(from: candidates, recentPosts: recentPosts, previews: previews)
+            let article = choice.article
+            print("Top scores (depth/novelty/usefulness):")
+            for score in choice.scores.sorted(by: { $0.total > $1.total }).prefix(5) {
+                print("  \(score.selected ? "*" : " ") \(score.depth)/\(score.novelty)/\(score.usefulness) \(score.title)")
+            }
             let content: String
             if let cached = contentCache[article.url] {
                 content = cached
@@ -64,7 +75,7 @@ func runDryRun(models: [String], candidates: [Article], recentPostTitles: [Strin
             }
             let post = try await aiService.generatePost(for: article, content: content)
             print("Selected: \(article.url)\n")
-            print(post)
+            print(post.text)
             print("\n[tokens in \(aiService.usage.promptTokens), out \(aiService.usage.completionTokens), \(elapsedMilliseconds(since: startedAt)) ms]")
         } catch {
             print("Failed: \(error)")
@@ -111,6 +122,7 @@ func measure<T>(
 func publish(
     method: String,
     article: Article,
+    hashtags: [String],
     telegramService: TelegramService,
     metricsStore: SQLiteMetricsStore?,
     runID: Int64?,
@@ -125,6 +137,7 @@ func publish(
                 method: method,
                 articleURL: article.url,
                 title: article.title,
+                hashtags: hashtags,
                 status: "success"
             )
         }
@@ -297,20 +310,31 @@ do {
     }
 
     let recentPostWindow = Date().addingTimeInterval(-14 * 24 * 60 * 60)
-    let recentPostTitles = postHistory
+    // postHistory is newest first, which the selection prompt relies on for topic variety.
+    let recentPosts = postHistory
         .filter { $0.postedAt > recentPostWindow }
-        .compactMap { $0.title }
+        .compactMap { post in post.title.map { RecentPost(title: $0, hashtags: post.hashtags) } }
+
+    print("Fetching candidate previews...")
+    let previews = try await measure("candidate_preview_fetch", metricsStore: metricsStore, runID: runID) {
+        await articleContentService.fetchPreviews(for: candidates)
+    }
+    print("Fetched \(previews.count) of \(min(candidates.count, ArticleContentService.maxPreviews)) candidate pages.")
 
     if isDryRun {
-        await runDryRun(models: dryRunModels, candidates: candidates, recentPostTitles: recentPostTitles)
+        await runDryRun(models: dryRunModels, candidates: candidates, recentPosts: recentPosts, previews: previews)
         Foundation.exit(0)
     }
 
     print("Selecting best article...")
-    let selectedArticle = try await measure("article_selection", metricsStore: metricsStore, runID: runID) {
-        try await aiService.selectArticle(from: candidates, recentPostTitles: recentPostTitles)
+    let choice = try await measure("article_selection", metricsStore: metricsStore, runID: runID) {
+        try await aiService.selectArticle(from: candidates, recentPosts: recentPosts, previews: previews)
     }
+    let selectedArticle = choice.article
     selectedArticleForMetrics = selectedArticle
+    if let metricsStore, let runID {
+        try? metricsStore.recordCandidateScores(runID: runID, scores: choice.scores)
+    }
 
     print("Fetching selected article content...")
     let articleContent = try await measure("article_content_fetch", metricsStore: metricsStore, runID: runID) {
@@ -324,7 +348,7 @@ do {
         try await aiService.generatePost(for: selectedArticle, content: articleContent)
     }
 
-    if post.isEmpty {
+    if post.text.isEmpty {
          print("AI failed to generate a post.")
         if let metricsStore, let runID {
             try? metricsStore.finishRun(
@@ -340,7 +364,7 @@ do {
          Foundation.exit(0)
     }
     
-    let formattedPost = formatTelegramPost(post, url: selectedArticle.url)
+    let formattedPost = formatTelegramPost(post.text, url: selectedArticle.url)
     
     print("Fetching OG image...")
     let ogImageURL = try await measure("og_image_fetch", metricsStore: metricsStore, runID: runID) {
@@ -350,19 +374,19 @@ do {
     if let ogImageURL = ogImageURL {
         print("Publishing to Telegram with image...")
         do {
-            try await publish(method: "sendPhoto", article: selectedArticle, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
+            try await publish(method: "sendPhoto", article: selectedArticle, hashtags: post.hashtags, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
                 try await telegramService.sendPhoto(url: ogImageURL, caption: formattedPost)
             }
         } catch {
             // Telegram fetches the image itself and fails on blocked or broken URLs: post without it.
             print("Publishing with image failed (\(error)) — retrying without image...")
-            try await publish(method: "sendMessage", article: selectedArticle, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
+            try await publish(method: "sendMessage", article: selectedArticle, hashtags: post.hashtags, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
                 try await telegramService.sendMessage(formattedPost)
             }
         }
     } else {
         print("Publishing to Telegram (no image found)...")
-        try await publish(method: "sendMessage", article: selectedArticle, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
+        try await publish(method: "sendMessage", article: selectedArticle, hashtags: post.hashtags, telegramService: telegramService, metricsStore: metricsStore, runID: runID) {
             try await telegramService.sendMessage(formattedPost)
         }
     }

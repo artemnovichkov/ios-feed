@@ -25,13 +25,13 @@ struct FeedService {
                         case .rss(let rssFeed):
                             articles = rssFeed.items?.compactMap { item in
                                 guard let pubDate = item.pubDate else { return nil }
-                                return Article(title: item.title ?? "", url: item.link ?? "", description: Self.stripHTML(item.description), pubDate: pubDate, author: blog.author)
+                                return Article(title: item.title ?? "", url: item.link ?? "", description: Self.stripHTML(item.description), pubDate: pubDate, author: Self.author(articleURL: item.link ?? "", blogAuthor: blog.author))
                             } ?? []
                         case .atom(let atomFeed):
                             articles = atomFeed.entries?.compactMap { entry in
                                 guard let pubDate = entry.published ?? entry.updated else { return nil }
                                 let link = entry.links?.first(where: { $0.attributes?.rel == "alternate" })?.attributes?.href ?? entry.links?.first?.attributes?.href ?? ""
-                                return Article(title: entry.title ?? "", url: link, description: Self.stripHTML(entry.summary?.value), pubDate: pubDate, author: blog.author)
+                                return Article(title: entry.title ?? "", url: link, description: Self.stripHTML(entry.summary?.value), pubDate: pubDate, author: Self.author(articleURL: link, blogAuthor: blog.author))
                             } ?? []
                         default: break
                         }
@@ -45,6 +45,18 @@ struct FeedService {
             print("Failed to fetch feed from \(feedUrlString): \(error)")
             return []
         }
+    }
+
+    /// Author shown under the post title. Official items get none ("by Apple" says nothing),
+    /// and Swift Package Index items get the package owner instead of the index maintainers.
+    static func author(articleURL: String, blogAuthor: String?) -> String? {
+        if ArticleFilter.isOfficial(articleURL) { return nil }
+        if ArticleFilter.sourceKey(articleURL).hasSuffix("swiftpackageindex.com") {
+            let path = URLComponents(string: articleURL)?.path ?? ""
+            guard let owner = path.split(separator: "/").first, owner != "blog" else { return blogAuthor }
+            return String(owner)
+        }
+        return blogAuthor
     }
 
     private static func stripHTML(_ string: String?) -> String? {
