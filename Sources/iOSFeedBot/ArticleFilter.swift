@@ -37,17 +37,55 @@ enum ArticleFilter {
         // Nothing Apple-related in any tier: fall back to the same tiers without the
         // platform filter, so a daily post is still possible.
         if !freshPool.isEmpty {
-            return (technicalCandidates(freshPool), .fresh)
+            return (technicalCandidates(preferSubstantive(freshPool)), .fresh)
         }
         if !backfillPool.isEmpty {
-            return (technicalCandidates(backfillPool), .backfill)
+            return (technicalCandidates(preferSubstantive(backfillPool)), .backfill)
         }
-        return (technicalCandidates(repostPool), .repost)
+        return (technicalCandidates(preferSubstantive(repostPool)), .repost)
     }
 
     private static func relevantCandidates(_ articles: [Article]) -> [Article] {
-        technicalCandidates(platformCandidates(articles))
+        technicalCandidates(platformCandidates(substantiveCandidates(articles)))
     }
+
+    private static func preferSubstantive(_ articles: [Article]) -> [Article] {
+        let substantive = substantiveCandidates(articles)
+        return substantive.isEmpty ? articles : substantive
+    }
+
+    /// Drops items that aren't worth a post on their own: minor package releases, newsletter
+    /// issues and digests that repackage other posts, podcast episodes, and raw commits.
+    /// The selection prompt asks for the same, but the model doesn't follow it reliably.
+    /// Hard filter like `platformCandidates`: `candidates` falls through to the next tier.
+    static func substantiveCandidates(_ articles: [Article]) -> [Article] {
+        articles.filter { !isMinorPackageRelease($0) && !isDigestOrEpisode(title: $0.title) }
+    }
+
+    /// Swift Package Index entries other than stable major releases ("Name - 3.0.0"):
+    /// minor and pre-releases ("1.0.7-beta", "2.34.0-SNAPSHOT-…"), and new packages
+    /// without a version, which are mostly unknown hobby projects.
+    static func isMinorPackageRelease(_ article: Article) -> Bool {
+        guard sourceKey(article.url).hasSuffix("swiftpackageindex.com") else { return false }
+        guard let match = article.title.firstMatch(of: /\sv?(\d+)\.(\d+)(?:\.(\d+))?(-\S*)?\s*$/) else {
+            return true
+        }
+        let major = Int(match.1) ?? 0
+        let minor = Int(match.2) ?? 0
+        let patch = match.3.flatMap { Int($0) } ?? 0
+        return major == 0 || minor != 0 || patch != 0 || match.4 != nil
+    }
+
+    static func isDigestOrEpisode(title: String) -> Bool {
+        let lowercased = title.lowercased()
+        return digestTitlePatterns.contains { lowercased.contains($0) }
+            || lowercased.contains(/\bissue\s+#?\d+/)
+    }
+
+    private static let digestTitlePatterns = [
+        "weekly", "newsletter", "digest", "roundup", "round-up", "this week in",
+        "podcast", "episode", "merge pull request"
+    ]
 
     /// Drops content unrelated to Apple platforms. Unlike `technicalCandidates` this is a hard
     /// filter that may return an empty pool: feeds come from iOS blogs, but their authors also

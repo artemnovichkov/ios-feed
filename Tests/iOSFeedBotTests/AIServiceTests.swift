@@ -107,11 +107,39 @@ final class AIServiceTests: XCTestCase {
             GeneratedPost(
                 title: "Article Title",
                 summary: "Summary text.",
+                keyTakeaway: "Key point.",
                 hashtags: ["Swift", "#iOS", "example"]
             )
         )
 
-        XCTAssertEqual(post, "Article Title\n\nSummary text.\n\n#Swift #iOS #example")
+        XCTAssertEqual(post, "Article Title\n\nSummary text.\n\n💡 Key point.\n\n#Swift #iOS #example")
+    }
+
+    func testFormatPostAddsAuthorAndCapsHashtags() {
+        let post = AIService.formatPost(
+            GeneratedPost(
+                title: "Title",
+                summary: "Summary.",
+                keyTakeaway: "",
+                hashtags: ["SwiftUI", "swiftui", "Swift", "Xcode", "Testing"]
+            ),
+            author: "Natalia Panferova"
+        )
+
+        XCTAssertEqual(post, "Title\nby Natalia Panferova\n\nSummary.\n\n#SwiftUI #Swift #Xcode")
+    }
+
+    func testPostSchemaRestrictsHashtagsToTopicVocabulary() throws {
+        let request = OpenAIRequest(
+            messages: [],
+            responseFormat: ResponseFormat(name: "telegram_post", schema: AIService.postSchemaForTesting)
+        )
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any]
+        let schema = ((json?["response_format"] as? [String: Any])?["json_schema"] as? [String: Any])?["schema"] as? [String: Any]
+        let hashtags = (schema?["properties"] as? [String: Any])?["hashtags"] as? [String: Any]
+        let items = hashtags?["items"] as? [String: Any]
+
+        XCTAssertEqual(items?["enum"] as? [String], AIService.topicHashtags)
     }
 
     func testSanitizeHashtagStripsSpecialCharacters() {
@@ -128,6 +156,7 @@ final class AIServiceTests: XCTestCase {
             GeneratedPost(
                 title: "Title",
                 summary: "Summary.",
+                keyTakeaway: "",
                 hashtags: ["Swift UI", "ios.dev", "#valid"]
             )
         )

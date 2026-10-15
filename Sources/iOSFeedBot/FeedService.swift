@@ -25,13 +25,13 @@ struct FeedService {
                         case .rss(let rssFeed):
                             articles = rssFeed.items?.compactMap { item in
                                 guard let pubDate = item.pubDate else { return nil }
-                                return Article(title: item.title ?? "", url: item.link ?? "", description: Self.stripHTML(item.description), pubDate: pubDate)
+                                return Article(title: item.title ?? "", url: item.link ?? "", description: Self.stripHTML(item.description), pubDate: pubDate, author: blog.author)
                             } ?? []
                         case .atom(let atomFeed):
                             articles = atomFeed.entries?.compactMap { entry in
                                 guard let pubDate = entry.published ?? entry.updated else { return nil }
                                 let link = entry.links?.first(where: { $0.attributes?.rel == "alternate" })?.attributes?.href ?? entry.links?.first?.attributes?.href ?? ""
-                                return Article(title: entry.title ?? "", url: link, description: Self.stripHTML(entry.summary?.value), pubDate: pubDate)
+                                return Article(title: entry.title ?? "", url: link, description: Self.stripHTML(entry.summary?.value), pubDate: pubDate, author: blog.author)
                             } ?? []
                         default: break
                         }

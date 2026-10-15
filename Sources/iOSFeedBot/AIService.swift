@@ -15,8 +15,18 @@ final class AIService: @unchecked Sendable {
     private let metricsStore: SQLiteMetricsStore?
     private let runID: Int64?
     private let pricing: OpenAIPricing
+    let model: String
+    /// Tokens spent by this instance, for comparing models in dry runs.
+    private(set) var usage = OpenAIUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0)
 
     private static let maxArticleContentCharacters = 12_000
+    private static let maxHashtags = 3
+    /// Fixed vocabulary, so hashtags work as navigation across the channel.
+    static let topicHashtags = [
+        "SwiftUI", "UIKit", "Swift", "Concurrency", "SwiftEvolution", "Xcode", "BuildTools",
+        "Testing", "Debugging", "Performance", "Architecture", "Persistence", "Networking",
+        "Accessibility", "Animation", "AI", "Security", "OpenSource", "AppleNews"
+    ]
     private static let selectionSchema = JSONValue.object([
         "type": .string("object"),
         "properties": .object([
@@ -36,25 +46,33 @@ final class AIService: @unchecked Sendable {
             "summary": .object([
                 "type": .string("string")
             ]),
+            "keyTakeaway": .object([
+                "type": .string("string")
+            ]),
             "hashtags": .object([
                 "type": .string("array"),
                 "items": .object([
-                    "type": .string("string")
+                    "type": .string("string"),
+                    "enum": .array(topicHashtags.map(JSONValue.string))
                 ])
             ])
         ]),
-        "required": .array([.string("title"), .string("summary"), .string("hashtags")]),
+        "required": .array([.string("title"), .string("summary"), .string("keyTakeaway"), .string("hashtags")]),
         "additionalProperties": .bool(false)
     ])
+
+    static var postSchemaForTesting: JSONValue { postSchema }
 
     init(
         metricsStore: SQLiteMetricsStore? = nil,
         runID: Int64? = nil,
-        pricing: OpenAIPricing = OpenAIPricing(inputPricePerMillionTokens: 0, outputPricePerMillionTokens: 0)
+        pricing: OpenAIPricing = OpenAIPricing(inputPricePerMillionTokens: 0, outputPricePerMillionTokens: 0),
+        model: String = Config.openaiModel
     ) {
         self.metricsStore = metricsStore
         self.runID = runID
         self.pricing = pricing
+        self.model = model
     }
 
     func selectArticle(from articles: [Article], recentPostTitles: [String] = []) async throws -> Article {
@@ -81,7 +99,7 @@ final class AIService: @unchecked Sendable {
             operation: "post_generation",
             responseFormat: ResponseFormat(name: "telegram_post", schema: Self.postSchema)
         )
-        return Self.formatPost(response)
+        return Self.formatPost(response, author: article.author)
     }
 
     func generatePost(articles: [Article]) async throws -> (url: String, post: String) {
@@ -153,18 +171,17 @@ final class AIService: @unchecked Sendable {
         Instructions:
         - Determine whether this is an article/tutorial, an open source framework/library release, an official Apple announcement, or a Swift Evolution proposal.
         - Return the title in the title field.
-        - Return a short summary (2-3 sentences) in the summary field:
+        - Return a short summary in the summary field: at most 2 sentences and 50 words. Pick the one or two points that matter most instead of listing every API the content mentions.
           - Write naturally and engagingly — vary the sentence structure each time.
           - Do NOT open with a template phrase like "The author introduces", "The article discusses", "This article covers", or any fixed formula. Lead with what's actually interesting: the problem solved, the technique used, the key insight, or what makes this worth reading.
           - For frameworks/libraries: focus on what it does, what problem it solves, or what changed in this release.
           - For Swift Evolution proposals: explain what the proposal changes in the language or library, and mention its status (in review until a date, accepted, accepted with modifications).
           - Stay technical and factual: name the concrete APIs, types, tools, or techniques the content actually covers.
+        - Return one sentence of at most 25 words in the keyTakeaway field: the single most useful concrete thing a reader learns — a non-obvious behavior, a gotcha, a measurement, or the exact API to reach for. It must add something the summary doesn't already say. No generic statements like "this improves code quality".
         - This is a developer channel, not an ad. Do NOT use promotional or hype language ("unlock", "secrets", "game-changing", "must-read", "packed with insights", "supercharge", "take your app to the next level"), and do NOT end with a call to action telling the reader to read, dive in, or check it out.
         - Never use "we", "our", or first-person plural — the channel is sharing, not authoring.
-        - Return hashtags in the hashtags field, including a source domain hashtag.
-        - Each hashtag must contain ONLY letters and digits — no spaces, dots, hyphens, or special characters.
-        - Write each hashtag as a single word without the # symbol (e.g. "SwiftUI", "iOSDev", "WWDC25").
-        - For domain-based hashtags strip all punctuation (e.g. "ios.dev" → "iosdev", "swift-evolution.org" → "swiftevolution").
+        - Return 1 to 3 hashtags in the hashtags field, most relevant first, picked from the allowed values only. Tag the main subject, not every topic mentioned in passing.
+          - "Persistence" covers SwiftData, Core Data, CloudKit, and file storage. "BuildTools" covers SwiftPM, Bazel, CI, and build systems. "AppleNews" is for official Apple announcements, requirements, and deprecations. "OpenSource" is for library and package releases.
         """
     }
 
@@ -177,19 +194,25 @@ final class AIService: @unchecked Sendable {
         return sanitized.isEmpty ? "" : "#\(sanitized)"
     }
 
-    static func formatPost(_ post: GeneratedPost) -> String {
+    static func formatPost(_ post: GeneratedPost, author: String? = nil) -> String {
+        var seen = Set<String>()
         let hashtags = post.hashtags
             .map { sanitizeHashtag($0) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+            .prefix(maxHashtags)
             .joined(separator: " ")
 
-        return """
-        \(post.title)
-
-        \(post.summary)
-
-        \(hashtags)
-        """
+        var lines = [post.title]
+        if let author = author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty {
+            lines.append("by \(author)")
+        }
+        lines += ["", post.summary]
+        let takeaway = post.keyTakeaway.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !takeaway.isEmpty {
+            lines += ["", "💡 \(takeaway)"]
+        }
+        lines += ["", hashtags]
+        return lines.joined(separator: "\n")
     }
 
     private func sendPrompt<Output: Decodable>(
@@ -199,6 +222,7 @@ final class AIService: @unchecked Sendable {
     ) async throws -> Output {
         let startedAt = Date()
         let requestBody = OpenAIRequest(
+            model: model,
             messages: [.init(role: "user", content: prompt)],
             responseFormat: responseFormat
         )
@@ -232,6 +256,13 @@ final class AIService: @unchecked Sendable {
             }
 
             let output = try JSONDecoder().decode(Output.self, from: outputData)
+            if let callUsage = response.usage {
+                usage = OpenAIUsage(
+                    promptTokens: usage.promptTokens + callUsage.promptTokens,
+                    completionTokens: usage.completionTokens + callUsage.completionTokens,
+                    totalTokens: usage.totalTokens + callUsage.totalTokens
+                )
+            }
             recordAICall(
                 operation: operation,
                 usage: response.usage ?? OpenAIUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0),
@@ -263,7 +294,7 @@ final class AIService: @unchecked Sendable {
         try? metricsStore.recordAICall(
             runID: runID,
             operation: operation,
-            model: Config.openaiModel,
+            model: model,
             usage: usage,
             durationMilliseconds: durationMilliseconds,
             status: status,
@@ -280,6 +311,7 @@ struct ArticleSelection: Codable, Sendable {
 struct GeneratedPost: Codable, Sendable {
     let title: String
     let summary: String
+    let keyTakeaway: String
     let hashtags: [String]
 }
 

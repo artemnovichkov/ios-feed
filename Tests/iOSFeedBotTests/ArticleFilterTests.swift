@@ -274,4 +274,41 @@ final class ArticleFilterTests: XCTestCase {
         XCTAssertTrue(ArticleFilter.isOfficial("https://forums.swift.org/t/se-0548-resignremoteid/89365"))
         XCTAssertFalse(ArticleFilter.isOfficial("https://sarunw.com/posts/swift/"))
     }
+
+    func testMinorPackageReleasesAreNotSubstantive() {
+        func release(_ title: String) -> Article {
+            Article(title: title, url: "https://swiftpackageindex.com/owner/repo", description: nil, pubDate: Date())
+        }
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("AetherEngine - 4.11.0")))
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("SwiftSci - v2.6.0")))
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("swift-span-algorithms - 0.2.0")))
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("AppsOnAir-AppPush - 1.0.7-beta")))
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("vapor - 5.0.0-beta.4")))
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("MapboxSearch - 2.34.0-SNAPSHOT-10-15--05-31.git-333da88")))
+        XCTAssertFalse(ArticleFilter.isMinorPackageRelease(release("NobodyWho - 3.0.0")))
+        XCTAssertTrue(ArticleFilter.isMinorPackageRelease(release("ComPDFKit")))
+        XCTAssertFalse(ArticleFilter.isMinorPackageRelease(
+            Article(title: "What's new in Swift 6.4", url: "https://swift.org/blog/6.4", description: nil, pubDate: Date())
+        ))
+    }
+
+    func testDigestsEpisodesAndCommitsAreNotSubstantive() {
+        XCTAssertTrue(ArticleFilter.isDigestOrEpisode(title: "The iOS Weekly Brief: Issue #81"))
+        XCTAssertTrue(ArticleFilter.isDigestOrEpisode(title: "Those Who Swift - Issue 288"))
+        XCTAssertTrue(ArticleFilter.isDigestOrEpisode(title: "Keep Two Thoughts Podcast 170 - Research"))
+        XCTAssertTrue(ArticleFilter.isDigestOrEpisode(title: "Merge pull request #3264 from a-viv-a/update"))
+        XCTAssertFalse(ArticleFilter.isDigestOrEpisode(title: "Blend modes in SwiftUI"))
+    }
+
+    func testCandidatesSkipNoiseWhenSubstantiveItemsExist() {
+        let noise = Article(title: "SwiftUI Weekly - Issue #200", url: "https://a.com/1", description: nil, pubDate: Date())
+        let article = Article(title: "Blend modes in SwiftUI", url: "https://b.com/2", description: nil, pubDate: Date())
+        let result = ArticleFilter.candidates(
+            freshArticles: [noise, article],
+            allArticles: [noise, article],
+            postedURLs: [],
+            recentlyPostedURLs: []
+        )
+        XCTAssertEqual(result.articles.map(\.title), ["Blend modes in SwiftUI"])
+    }
 }

@@ -8,8 +8,9 @@ final class DirectoryService: Sendable {
         case invalidResponse
     }
 
-    /// Directory categories that never contain technical content.
-    static let excludedCategorySlugs: Set<String> = ["marketing"]
+    /// Directory categories that never contain technical content, or aren't articles:
+    /// podcasts, videos, streams, and newsletters that only repackage other posts.
+    static let excludedCategorySlugs: Set<String> = ["marketing", "podcasts", "newsletters", "youtube", "twitch"]
 
     func fetchBlogs() async throws -> [Blog] {
         guard let url = URL(string: Config.directoryUrl) else { return [] }

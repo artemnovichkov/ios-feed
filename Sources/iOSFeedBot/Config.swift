@@ -2,7 +2,7 @@ import Foundation
 
 enum Config {
     static let openaiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""
-    static let openaiModel = "gpt-4o-mini"
+    static let openaiModel = ProcessInfo.processInfo.environment["OPENAI_MODEL"] ?? "gpt-5-mini"
     static let telegramBotToken = ProcessInfo.processInfo.environment["TELEGRAM_BOT_TOKEN"] ?? ""
     static let telegramChannelId = ProcessInfo.processInfo.environment["TELEGRAM_CHANNEL_ID"] ?? ""
     static let directoryUrl = "https://raw.githubusercontent.com/daveverwer/iOSDevDirectory/main/blogs.json"
@@ -28,12 +28,13 @@ enum Config {
     static let openAIInputPricePerMillionTokens = Double(ProcessInfo.processInfo.environment["OPENAI_INPUT_PRICE_PER_1M_TOKENS"] ?? "") ?? 0
     static let openAIOutputPricePerMillionTokens = Double(ProcessInfo.processInfo.environment["OPENAI_OUTPUT_PRICE_PER_1M_TOKENS"] ?? "") ?? 0
 
-    static func validate() {
-        let missingConfigs = [
-            ("OPENAI_API_KEY", openaiKey),
-            ("TELEGRAM_BOT_TOKEN", telegramBotToken),
-            ("TELEGRAM_CHANNEL_ID", telegramChannelId)
-        ].filter { $0.1.isEmpty }.map { $0.0 }
+    /// Dry runs never touch Telegram, so they only need the OpenAI key.
+    static func validate(requireTelegram: Bool = true) {
+        var configs = [("OPENAI_API_KEY", openaiKey)]
+        if requireTelegram {
+            configs += [("TELEGRAM_BOT_TOKEN", telegramBotToken), ("TELEGRAM_CHANNEL_ID", telegramChannelId)]
+        }
+        let missingConfigs = configs.filter { $0.1.isEmpty }.map { $0.0 }
 
         if !missingConfigs.isEmpty {
             let message = "Error: Missing configuration environment variables: \(missingConfigs.joined(separator: ", "))"

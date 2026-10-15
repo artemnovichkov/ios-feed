@@ -4,11 +4,13 @@ struct Blog: Codable, Sendable {
     let title: String
     let siteUrl: String
     let feedUrl: String?
+    var author: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case title
         case siteUrl = "site_url"
         case feedUrl = "feed_url"
+        case author
     }
 }
 
@@ -17,6 +19,8 @@ struct Article: Sendable {
     let url: String
     let description: String?
     let pubDate: Date
+    /// Blog author from the directory; feed-level author fields are too often emails or empty.
+    var author: String? = nil
 }
 
 struct OpenAIRequest: Codable, Sendable {

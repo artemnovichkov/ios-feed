@@ -28,6 +28,50 @@ func appendUTMParameters(to urlString: String) -> String {
     return components.url?.absoluteString ?? urlString
 }
 
+/// Hyperlinks the first line (the title) and escapes the rest for Telegram HTML.
+func formatTelegramPost(_ post: String, url: String) -> String {
+    var lines = post.components(separatedBy: .newlines)
+    guard !lines.isEmpty else { return post }
+    lines[0] = "<a href=\"\(appendUTMParameters(to: url))\"><b>\(escapeHTML(lines[0]))</b></a>"
+    for i in 1..<lines.count {
+        lines[i] = escapeHTML(lines[i])
+    }
+    return lines.joined(separator: "\n")
+}
+
+/// Runs selection and generation for each model on the same candidate pool and prints
+/// the results. Nothing is posted and no metrics are recorded.
+func runDryRun(models: [String], candidates: [Article], recentPostTitles: [String]) async {
+    print("\nCandidates (\(candidates.count)):")
+    for (index, article) in candidates.enumerated() {
+        print("\(index + 1). \(article.title) — \(article.url)")
+    }
+
+    let articleContentService = ArticleContentService()
+    var contentCache: [String: String] = [:]
+    for model in models {
+        print("\n===== \(model) =====")
+        let aiService = AIService(model: model)
+        let startedAt = Date()
+        do {
+            let article = try await aiService.selectArticle(from: candidates, recentPostTitles: recentPostTitles)
+            let content: String
+            if let cached = contentCache[article.url] {
+                content = cached
+            } else {
+                content = await articleContentService.fetchContent(for: article.url) ?? article.description ?? ""
+                contentCache[article.url] = content
+            }
+            let post = try await aiService.generatePost(for: article, content: content)
+            print("Selected: \(article.url)\n")
+            print(post)
+            print("\n[tokens in \(aiService.usage.promptTokens), out \(aiService.usage.completionTokens), \(elapsedMilliseconds(since: startedAt)) ms]")
+        } catch {
+            print("Failed: \(error)")
+        }
+    }
+}
+
 func elapsedMilliseconds(since date: Date) -> Int {
     Int(Date().timeIntervalSince(date) * 1000)
 }
@@ -115,12 +159,25 @@ var runID: Int64?
 var articlesFound = 0
 var selectedArticleForMetrics: Article?
 
+/// `--dry-run [--models a,b]`: compare models on today's candidates without posting.
+let isDryRun = CommandLine.arguments.contains("--dry-run")
+let dryRunModels = CommandLine.arguments.firstIndex(of: "--models")
+    .flatMap { CommandLine.arguments.indices.contains($0 + 1) ? CommandLine.arguments[$0 + 1] : nil }
+    .map { $0.split(separator: ",").map(String.init) } ?? [Config.openaiModel]
+/// `--days-ago N` (dry runs only): replay the candidate pool as it looked N days ago.
+let dryRunDaysAgo = isDryRun
+    ? CommandLine.arguments.firstIndex(of: "--days-ago")
+        .flatMap { CommandLine.arguments.indices.contains($0 + 1) ? Int(CommandLine.arguments[$0 + 1]) : nil } ?? 0
+    : 0
+let referenceDate = Date().addingTimeInterval(-Double(dryRunDaysAgo) * 24 * 60 * 60)
+
 do {
     // First validate config
-    Config.validate()
+    Config.validate(requireTelegram: !isDryRun)
 
     metricsStore = try? SQLiteMetricsStore(path: Config.metricsDatabasePath)
-    runID = try? metricsStore?.startRun(startedAt: runStartedAt)
+    // Dry runs read post history for dedupe but leave no run behind.
+    runID = isDryRun ? nil : try? metricsStore?.startRun(startedAt: runStartedAt)
     
     let directoryService = DirectoryService()
     let feedService = FeedService()
@@ -141,7 +198,7 @@ do {
 
     // Exactly one post per day: extra runs (retries, manual launches) become no-ops.
     let startOfToday = Calendar.current.startOfDay(for: Date())
-    if postHistory.contains(where: { $0.postedAt >= startOfToday }) {
+    if !isDryRun, postHistory.contains(where: { $0.postedAt >= startOfToday }) {
         print("Already posted today — skipping.")
         if let metricsStore, let runID {
             try? metricsStore.finishRun(
@@ -165,9 +222,9 @@ do {
     print("Fetching recent articles from \(blogs.count) feeds...")
     // Fetch a 72h window so there is a backfill pool when everything fresh was already posted.
     let articles = try await measure("feed_fetch", metricsStore: metricsStore, runID: runID) {
-        await feedService.fetchAllRecent(blogs: blogs, maxAge: 72 * 60 * 60)
-    }
-    let last24Hours = Date().addingTimeInterval(-24 * 60 * 60)
+        await feedService.fetchAllRecent(blogs: blogs, maxAge: Double(72 + dryRunDaysAgo * 24) * 60 * 60)
+    }.filter { $0.pubDate <= referenceDate }
+    let last24Hours = referenceDate.addingTimeInterval(-24 * 60 * 60)
     let freshArticles = articles.filter { $0.pubDate > last24Hours }
     articlesFound = freshArticles.count
     print("Found \(freshArticles.count) articles in the last 24h (\(articles.count) in the last 72h).")
@@ -244,6 +301,11 @@ do {
         .filter { $0.postedAt > recentPostWindow }
         .compactMap { $0.title }
 
+    if isDryRun {
+        await runDryRun(models: dryRunModels, candidates: candidates, recentPostTitles: recentPostTitles)
+        Foundation.exit(0)
+    }
+
     print("Selecting best article...")
     let selectedArticle = try await measure("article_selection", metricsStore: metricsStore, runID: runID) {
         try await aiService.selectArticle(from: candidates, recentPostTitles: recentPostTitles)
@@ -278,21 +340,7 @@ do {
          Foundation.exit(0)
     }
     
-    // Add UTM parameters to the URL
-    let trackedURL = appendUTMParameters(to: selectedArticle.url)
-    
-    // Format the post with a hyperlinked title
-    var lines = post.components(separatedBy: .newlines)
-    if !lines.isEmpty {
-        let title = lines[0]
-        lines[0] = "<a href=\"\(trackedURL)\"><b>\(escapeHTML(title))</b></a>"
-    }
-    
-    // Escape the rest of the post (except our already formatted title)
-    for i in 1..<lines.count {
-        lines[i] = escapeHTML(lines[i])
-    }
-    let formattedPost = lines.joined(separator: "\n")
+    let formattedPost = formatTelegramPost(post, url: selectedArticle.url)
     
     print("Fetching OG image...")
     let ogImageURL = try await measure("og_image_fetch", metricsStore: metricsStore, runID: runID) {

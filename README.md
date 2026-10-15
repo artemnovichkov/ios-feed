@@ -10,6 +10,7 @@ A Swift CLI tool that fetches the latest iOS development articles, uses OpenAI t
 
 ## Environment Variables
 - `OPENAI_API_KEY`: Your OpenAI API Key.
+- `OPENAI_MODEL`: OpenAI model. Defaults to `gpt-5-mini`.
 - `TELEGRAM_BOT_TOKEN`: Your Telegram Bot Token.
 - `TELEGRAM_CHANNEL_ID`: Your Telegram Channel ID.
 - `METRICS_DB_PATH`: SQLite metrics database path. Defaults to `.build/metrics.sqlite`.
@@ -31,6 +32,13 @@ export OPENAI_API_KEY=your_key
 export TELEGRAM_BOT_TOKEN=your_token
 export TELEGRAM_CHANNEL_ID=your_id
 ./.build/release/iOSFeedBot
+```
+
+### Dry run
+Compare models on the same candidate pool without posting or recording metrics. Only `OPENAI_API_KEY` is required.
+```bash
+./.build/release/iOSFeedBot --dry-run --models gpt-4.1,gpt-5-mini
+./.build/release/iOSFeedBot --dry-run --days-ago 2   # replay the pool from 2 days ago
 ```
 
 ## Metrics Dashboard
