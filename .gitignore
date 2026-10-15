@@ -3,3 +3,6 @@
 .build/
 .swiftpm/
 Packages/
+.env
+*.session
+*.session-journal
