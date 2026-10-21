@@ -28,13 +28,19 @@ func appendUTMParameters(to urlString: String) -> String {
     return components.url?.absoluteString ?? urlString
 }
 
+/// Escapes text for Telegram HTML and turns `backticked` spans into inline code.
+func escapeHTMLWithInlineCode(_ text: String) -> String {
+    escapeHTML(text).replacing(/`([^`\n]+)`/) { "<code>\($0.1)</code>" }
+}
+
 /// Hyperlinks the first line (the title) and escapes the rest for Telegram HTML.
 func formatTelegramPost(_ post: String, url: String) -> String {
     var lines = post.components(separatedBy: .newlines)
     guard !lines.isEmpty else { return post }
-    lines[0] = "<a href=\"\(appendUTMParameters(to: url))\"><b>\(escapeHTML(lines[0]))</b></a>"
+    let title = lines[0].replacingOccurrences(of: "`", with: "")
+    lines[0] = "<a href=\"\(appendUTMParameters(to: url))\"><b>\(escapeHTML(title))</b></a>"
     for i in 1..<lines.count {
-        lines[i] = escapeHTML(lines[i])
+        lines[i] = escapeHTMLWithInlineCode(lines[i])
     }
     return lines.joined(separator: "\n")
 }

@@ -240,6 +240,7 @@ final class AIService: @unchecked Sendable {
           - For frameworks/libraries: focus on what it does, what problem it solves, or what changed in this release.
           - For Swift Evolution proposals: explain what the proposal changes in the language or library, and mention its status (in review until a date, accepted, accepted with modifications).
           - Stay technical and factual: name the concrete APIs, types, tools, or techniques the content actually covers.
+        - In the summary and keyTakeaway, wrap code in backticks: API names, types, methods, properties, keywords, file names, and commands (e.g. `URL.path`, `path(percentEncoded:)`, `AGENTS.md`). Do not use backticks in the title or for plain product or framework names like SwiftUI or Xcode.
         - \(takeawayInstruction)
         - This is a developer channel, not an ad. Do NOT use promotional or hype language ("unlock", "secrets", "game-changing", "must-read", "packed with insights", "supercharge", "take your app to the next level"), and do NOT end with a call to action telling the reader to read, dive in, or check it out.
         - Never use "we", "our", or first-person plural — the channel is sharing, not authoring.
