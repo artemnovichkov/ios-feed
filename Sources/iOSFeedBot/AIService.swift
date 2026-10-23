@@ -30,6 +30,12 @@ final class AIService: @unchecked Sendable {
     ]
     /// Content shorter than this is a feed blurb, not the article: too thin for a takeaway.
     private static let minTakeawayContentCharacters = 1_500
+    /// Share of a takeaway's significant words already in the summary that makes it a repeat.
+    private static let maxTakeawayOverlap = 0.5
+    private static let stopWords: Set<String> = [
+        "the", "and", "for", "with", "has", "have", "that", "this", "use", "uses", "from", "into",
+        "under", "one", "its", "are", "was", "can", "not", "instead", "then", "when", "than", "you", "your"
+    ]
     private static let scoreValue = JSONValue.object([
         "type": .string("integer"),
         "enum": .array((1...5).map(JSONValue.int))
@@ -220,7 +226,7 @@ final class AIService: @unchecked Sendable {
         // A made-up takeaway is worse than none: only ask for one when the full text is there.
         let takeawayInstruction = articleContent.count < minTakeawayContentCharacters
             ? "The content above is only a short description, not the full text: return an empty string in the keyTakeaway field."
-            : "Return one sentence of at most 25 words in the keyTakeaway field: the single most useful concrete thing a reader learns — a non-obvious behavior, a gotcha, a measurement, or the exact API to reach for. It must add something the summary doesn't already say and must be stated in the content, not inferred. No generic statements like \"this improves code quality\". If the content has no such concrete point, return an empty string."
+            : "Return one sentence of at most 25 words in the keyTakeaway field: the single most useful concrete thing a reader learns — a non-obvious behavior, a gotcha, a measurement, or the exact API to reach for. It must add something the summary doesn't already say, not restate it in other words, and must be stated in the content, not inferred. For a package release, prefer a breaking change, a migration step, or a new API from the release notes. No generic statements like \"this improves code quality\". If the content has no such concrete point, return an empty string."
 
         return """
         Generate a Telegram post for this iOS development content.
@@ -238,6 +244,8 @@ final class AIService: @unchecked Sendable {
           - Write naturally and engagingly — vary the sentence structure each time.
           - Do NOT open with a template phrase like "The author introduces", "The article discusses", "This article covers", or any fixed formula. Lead with what's actually interesting: the problem solved, the technique used, the key insight, or what makes this worth reading.
           - For frameworks/libraries: focus on what it does, what problem it solves, or what changed in this release.
+          - For package releases with release notes: say what changed in this version and why it matters, not just what the package is.
+          - Never mention package metadata: license, stars, number of dependencies, libraries, or executables, or when it was released.
           - For Swift Evolution proposals: explain what the proposal changes in the language or library, and mention its status (in review until a date, accepted, accepted with modifications).
           - Stay technical and factual: name the concrete APIs, types, tools, or techniques the content actually covers.
         - In the summary and keyTakeaway, wrap code in backticks: API names, types, methods, properties, keywords, file names, and commands (e.g. `URL.path`, `path(percentEncoded:)`, `AGENTS.md`). Do not use backticks in the title or for plain product or framework names like SwiftUI or Xcode.
@@ -269,7 +277,25 @@ final class AIService: @unchecked Sendable {
             .map { $0 }
     }
 
-    static func formatPost(_ post: GeneratedPost, author: String? = nil) -> String {
+    /// The model often restates the summary despite the prompt: a takeaway whose words are
+    /// mostly in the summary already adds nothing, so it is dropped.
+    static func isRedundant(takeaway: String, summary: String) -> Bool {
+        let takeawayWords = significantWords(in: takeaway)
+        guard !takeawayWords.isEmpty else { return true }
+        let shared = takeawayWords.intersection(significantWords(in: summary))
+        return Double(shared.count) / Double(takeawayWords.count) >= maxTakeawayOverlap
+    }
+
+    private static func significantWords(in text: String) -> Set<String> {
+        Set(
+            text.lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+                .filter { $0.count >= 3 && !stopWords.contains($0) }
+        )
+    }
+
+        static func formatPost(_ post: GeneratedPost, author: String? = nil) -> String {
         let hashtags = topics(post.hashtags).map { "#\($0)" }.joined(separator: " ")
 
         var lines = [post.title]
@@ -278,7 +304,7 @@ final class AIService: @unchecked Sendable {
         }
         lines += ["", post.summary]
         let takeaway = post.keyTakeaway.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !takeaway.isEmpty {
+        if !takeaway.isEmpty && !isRedundant(takeaway: takeaway, summary: post.summary) {
             lines += ["", "💡 \(takeaway)"]
         }
         lines += ["", hashtags]

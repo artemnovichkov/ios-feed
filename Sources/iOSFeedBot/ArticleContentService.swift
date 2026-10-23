@@ -10,6 +10,18 @@ struct ArticlePreview: Sendable, Equatable {
     let excerpt: String
 }
 
+/// A Swift Package Index release entry ("Name - 2.0.0") resolved to its GitHub repository.
+struct PackageRelease: Sendable, Equatable {
+    let owner: String
+    let repo: String
+    let version: String
+
+    /// Tags are written with or without a "v" prefix; the feed title may use either.
+    var candidateTags: [String] {
+        version.hasPrefix("v") ? [version, String(version.dropFirst())] : [version, "v" + version]
+    }
+}
+
 struct ArticleContentService {
     /// Forum text kept ahead of an attached proposal, so the proposal fits the prompt limit.
     private static let maxForumCharacters = 3_000
@@ -59,7 +71,17 @@ struct ArticleContentService {
         return html
     }
 
-    func fetchContent(for urlString: String) async -> String? {
+    func fetchContent(for article: Article) async -> String? {
+        // The index page is package metadata only (license, stars, products): what changed
+        // is in the GitHub release notes. Without them the caller falls back to the feed description.
+        if let release = Self.packageRelease(url: article.url, title: article.title) {
+            guard let notes = await fetchReleaseNotes(for: release) else { return nil }
+            let description = article.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let about = description.isEmpty ? "" : "Package: \(description)\n\n"
+            return "\(about)Release notes for \(release.repo) \(release.version):\n\(notes)"
+        }
+
+        let urlString = article.url
         guard let html = await fetchString(from: urlString) else { return nil }
 
         let content = Self.extractReadableText(from: html)
@@ -94,6 +116,40 @@ struct ArticleContentService {
             print("Failed to fetch article content for \(urlString): \(error)")
             return nil
         }
+    }
+
+    private func fetchReleaseNotes(for release: PackageRelease) async -> String? {
+        for tag in release.candidateTags {
+            let url = "https://api.github.com/repos/\(release.owner)/\(release.repo)/releases/tags/\(tag)"
+            if let json = await fetchString(from: url), let notes = Self.releaseNotes(fromJSON: json) {
+                return notes
+            }
+        }
+        return nil
+    }
+
+    static func packageRelease(url: String, title: String) -> PackageRelease? {
+        guard ArticleFilter.sourceKey(url).hasSuffix("swiftpackageindex.com") else { return nil }
+        let path = (URLComponents(string: url)?.path ?? "").split(separator: "/")
+        guard path.count >= 2, path[0] != "blog",
+              let match = title.firstMatch(of: /\s(v?\d+(?:\.\d+)*(?:-\S+)?)\s*$/) else {
+            return nil
+        }
+        return PackageRelease(owner: String(path[0]), repo: String(path[1]), version: String(match.1))
+    }
+
+    /// Body of a GitHub release API response; nil for errors ("Not Found") and empty notes.
+    static func releaseNotes(fromJSON json: String) -> String? {
+        struct Release: Decodable {
+            let body: String?
+        }
+        guard let data = json.data(using: .utf8),
+              let body = (try? JSONDecoder().decode(Release.self, from: data))?.body?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !body.isEmpty else {
+            return nil
+        }
+        return body
     }
 
     /// Raw GitHub URL of the first swift-evolution proposal linked from the page.

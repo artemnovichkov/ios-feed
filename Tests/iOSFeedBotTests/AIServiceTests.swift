@@ -256,4 +256,50 @@ final class AIServiceTests: XCTestCase {
         XCTAssertNil(FeedService.author(articleURL: "https://www.swift.org/blog/post/", blogAuthor: "Apple"))
         XCTAssertEqual(FeedService.author(articleURL: "https://nilcoalescing.com/blog/Post", blogAuthor: "Natalia Panferova"), "Natalia Panferova")
     }
+
+    func testPostPromptAsksForReleaseChangesAndBansPackageMetadata() {
+        let article = Article(title: "Hammer - 2.0.0", url: "https://swiftpackageindex.com/lyft/Hammer", description: nil, pubDate: Date())
+
+        let prompt = AIService.buildPostPrompt(article: article, content: String(repeating: "a", count: 2_000))
+
+        XCTAssertTrue(prompt.contains("say what changed in this version"))
+        XCTAssertTrue(prompt.contains("Never mention package metadata"))
+        XCTAssertTrue(prompt.contains("prefer a breaking change, a migration step, or a new API"))
+    }
+
+    func testTakeawayRestatingSummaryIsRedundant() {
+        // Posts 183 and 181: the takeaway repeats the summary.
+        XCTAssertTrue(AIService.isRedundant(
+            takeaway: "2.0.0 has no package dependencies and ships two libraries plus one executable under the Apache 2.0 license.",
+            summary: "Hammer is an iOS touch-synthesis library for UI automation and testing; version 2.0.0 was released 14 hours ago. It's Apache 2.0 licensed, has no package dependencies, and bundles two libraries plus an executable."
+        ))
+        XCTAssertTrue(AIService.isRedundant(
+            takeaway: "Use `url.absoluteURL.path(percentEncoded: false)` (or `url.absoluteURL.standardizedFileURL.path(percentEncoded: false)`) to reliably obtain an absolute filesystem path.",
+            summary: "Xcode warns `URL.path` is deprecated in favor of `path(percentEncoded:)`, but the new API can return relative paths. Prefer `url.absoluteURL.path(percentEncoded: false)` or `standardizedFileURL` variants to get a full file-system path across OS versions."
+        ))
+        // Post 182: the takeaway adds a concrete gotcha.
+        XCTAssertFalse(AIService.isRedundant(
+            takeaway: "Don't set RealityView's `customPostProcessing` in make/update; wait for the first frame and then attach the effect (workaround for FB25173230 crashing bug).",
+            summary: "SelectionEffects is an SPM package that lets you mark entities with `SelectionEffectComponent` to get outline, highlight, or shader-driven selection visuals across RealityView and ARView. It installs with `content.installSelectionEffects()`, uses a System to read camera/selection each frame, and includes a first-frame workaround for RealityView crashes."
+        ))
+    }
+
+    func testFormatPostDropsTakeawayThatRepeatsSummary() {
+        let post = AIService.formatPost(
+            GeneratedPost(
+                title: "Title",
+                summary: "Hammer has no package dependencies and ships two libraries.",
+                keyTakeaway: "No package dependencies, two libraries.",
+                hashtags: ["Testing"]
+            )
+        )
+
+        XCTAssertEqual(post, "Title\n\nHammer has no package dependencies and ships two libraries.\n\n#Testing")
+    }
+
+    func testTelegramPostEscapesAmpersandsInTitleLink() {
+        let html = formatTelegramPost("Title\n\nSummary", url: "https://example.com/post?a=1")
+
+        XCTAssertTrue(html.hasPrefix(#"<a href="https://example.com/post?a=1&amp;utm_source=telegram&amp;utm_medium=channel&amp;utm_campaign=ios_daily"><b>Title</b></a>"#))
+    }
 }

@@ -83,4 +83,31 @@ final class ArticleContentServiceTests: XCTestCase {
 
         XCTAssertEqual(ArticleContentService.mainHTML(in: html), html)
     }
+
+    func testPackageReleaseResolvesSwiftPackageIndexEntryToGitHubRepo() {
+        let release = ArticleContentService.packageRelease(
+            url: "https://swiftpackageindex.com/lyft/Hammer#releases",
+            title: "Hammer - 2.0.0"
+        )
+
+        XCTAssertEqual(release, PackageRelease(owner: "lyft", repo: "Hammer", version: "2.0.0"))
+        XCTAssertEqual(release?.candidateTags, ["2.0.0", "v2.0.0"])
+        XCTAssertEqual(PackageRelease(owner: "o", repo: "r", version: "v3.0").candidateTags, ["v3.0", "3.0"])
+    }
+
+    func testPackageReleaseIgnoresOtherHostsBlogAndUnversionedTitles() {
+        XCTAssertNil(ArticleContentService.packageRelease(url: "https://example.com/lyft/Hammer", title: "Hammer - 2.0.0"))
+        XCTAssertNil(ArticleContentService.packageRelease(url: "https://swiftpackageindex.com/blog/post", title: "Update 2.0"))
+        XCTAssertNil(ArticleContentService.packageRelease(url: "https://swiftpackageindex.com/lyft/Hammer", title: "Hammer"))
+    }
+
+    func testReleaseNotesReadsBodyAndSkipsErrorsAndEmptyNotes() {
+        XCTAssertEqual(
+            ArticleContentService.releaseNotes(fromJSON: #"{"tag_name": "2.0.0", "body": "Hammer 2.0 moves to async/await.\n"}"#),
+            "Hammer 2.0 moves to async/await."
+        )
+        XCTAssertNil(ArticleContentService.releaseNotes(fromJSON: #"{"message": "Not Found"}"#))
+        XCTAssertNil(ArticleContentService.releaseNotes(fromJSON: #"{"body": "  "}"#))
+        XCTAssertNil(ArticleContentService.releaseNotes(fromJSON: "<html>rate limited</html>"))
+    }
 }

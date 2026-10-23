@@ -38,7 +38,7 @@ func formatTelegramPost(_ post: String, url: String) -> String {
     var lines = post.components(separatedBy: .newlines)
     guard !lines.isEmpty else { return post }
     let title = lines[0].replacingOccurrences(of: "`", with: "")
-    lines[0] = "<a href=\"\(appendUTMParameters(to: url))\"><b>\(escapeHTML(title))</b></a>"
+    lines[0] = "<a href=\"\(escapeHTML(appendUTMParameters(to: url)))\"><b>\(escapeHTML(title))</b></a>"
     for i in 1..<lines.count {
         lines[i] = escapeHTMLWithInlineCode(lines[i])
     }
@@ -76,7 +76,7 @@ func runDryRun(
             if let cached = contentCache[article.url] {
                 content = cached
             } else {
-                content = await articleContentService.fetchContent(for: article.url) ?? article.description ?? ""
+                content = await articleContentService.fetchContent(for: article) ?? article.description ?? ""
                 contentCache[article.url] = content
             }
             let post = try await aiService.generatePost(for: article, content: content)
@@ -344,7 +344,7 @@ do {
 
     print("Fetching selected article content...")
     let articleContent = try await measure("article_content_fetch", metricsStore: metricsStore, runID: runID) {
-        await articleContentService.fetchContent(for: selectedArticle.url)
+        await articleContentService.fetchContent(for: selectedArticle)
             ?? selectedArticle.description
             ?? ""
     }
